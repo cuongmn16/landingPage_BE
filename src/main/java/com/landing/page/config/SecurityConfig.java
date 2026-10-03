@@ -28,7 +28,7 @@ public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
 
-    @Value("${app.cors.allowed-origins:http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000}")
+    @Value("${app.cors.allowed-origins:https://landing-page-fe-nine.vercel.app,http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000}")
     private String allowedOriginsConfig;
 
     @Bean
