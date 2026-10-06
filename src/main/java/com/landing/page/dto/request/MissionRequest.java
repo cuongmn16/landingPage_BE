@@ -20,6 +20,6 @@ public class MissionRequest {
 
     private String description;
 
-    @Builder.Default
-    private boolean isOpen = true;
+    // Wrapper type: Jackson 3 rejects a missing/null value for primitives. null = open (default)
+    private Boolean isOpen;
 }

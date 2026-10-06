@@ -4,6 +4,9 @@ server:
 spring:
   application:
     name: landing-page-backend
+  config:
+    # Load local secrets from page/.env (git-ignored). Real environment variables still take precedence.
+    import: optional:file:.env[.properties]
 
   data:
     redis:
@@ -15,7 +18,7 @@ spring:
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/landing_db}
     username: ${SPRING_DATASOURCE_USERNAME:postgres}
-    password: ${SPRING_DATASOURCE_PASSWORD:postgres_password}
+    password: ${SPRING_DATASOURCE_PASSWORD}
     driver-class-name: org.postgresql.Driver
 
   jpa:
@@ -33,6 +36,7 @@ spring:
       max-file-size: 10MB
       max-request-size: 50MB
 
+  # Secrets (mail password, JWT secret, ...) must come from environment variables / .env — never commit them here.
   mail:
     host: ${SPRING_MAIL_HOST:smtp.gmail.com}
     port: ${SPRING_MAIL_PORT:587}
@@ -47,19 +51,24 @@ spring:
 
 minio:
   endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
-  access-key: ${MINIO_ACCESS_KEY:admin}
-  secret-key: ${MINIO_SECRET_KEY:password123}
+  access-key: ${MINIO_ACCESS_KEY}
+  secret-key: ${MINIO_SECRET_KEY}
   bucket: ${MINIO_BUCKET:mission-attachments}
 
 app:
+  frontend-url: ${FRONTEND_URL:http://localhost:5173}
+  admin:
+    email: ${ADMIN_EMAIL:admin@ctin.vn}
+    initial-password: ${ADMIN_INITIAL_PASSWORD:}
+    notify-email: ${ADMIN_NOTIFY_EMAIL:}
   cors:
-    allowed-origins: ${CORS_ALLOWED_ORIGINS:https://landing-page-fe-nine.vercel.app,http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000}
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}
   submission:
     max-files-per-mission: 5
     max-file-size-mb: 10
     allowed-extensions: jpg,jpeg,png,pdf,docx
 
 jwt:
-  secret: ${JWT_SECRET:ctin25yearstreasurehunthelticsecretkey2026supersecurekey1234567890}
-  access-token-expiration-ms: 86400000 # 24 hours
-  refresh-token-expiration-ms: 604800000 # 7 days
+  secret: ${JWT_SECRET}
+  access-token-expiration-ms: ${JWT_ACCESS_TOKEN_EXPIRATION_MS:3600000} # 1 hour
+  refresh-token-expiration-ms: ${JWT_REFRESH_TOKEN_EXPIRATION_MS:604800000} # 7 days

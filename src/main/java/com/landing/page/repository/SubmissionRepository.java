@@ -28,4 +28,12 @@ public interface SubmissionRepository extends JpaRepository<Submission, Long> {
 
     @Query("SELECT MAX(s.lastUpdatedAt) FROM Submission s WHERE s.employee.unit.id = :unitId")
     Optional<LocalDateTime> findMaxLastUpdatedAtByUnitId(@Param("unitId") Long unitId);
+
+    /** Rows of [employeeId, count] for submissions in the given statuses. */
+    @Query("SELECT s.employee.id, COUNT(s) FROM Submission s WHERE s.status IN :statuses GROUP BY s.employee.id")
+    List<Object[]> countSubmissionsGroupedByEmployee(@Param("statuses") List<SubmissionStatus> statuses);
+
+    /** Rows of [unitId, max(lastUpdatedAt)]. */
+    @Query("SELECT s.employee.unit.id, MAX(s.lastUpdatedAt) FROM Submission s GROUP BY s.employee.unit.id")
+    List<Object[]> findMaxLastUpdatedAtGroupedByUnit();
 }

@@ -2,8 +2,11 @@ package com.landing.page.config;
 
 import com.landing.page.security.JwtAuthenticationFilter;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -16,8 +19,9 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
-import org.springframework.beans.factory.annotation.Value;
+import jakarta.servlet.http.HttpServletResponse;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
 
@@ -26,9 +30,11 @@ import java.util.List;
 @RequiredArgsConstructor
 public class SecurityConfig {
 
+    private static final String ADMIN = "ADMIN";
+
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
 
-    @Value("${app.cors.allowed-origins:https://landing-page-fe-nine.vercel.app,http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000}")
+    @Value("${app.cors.allowed-origins}")
     private String allowedOriginsConfig;
 
     @Bean
@@ -41,20 +47,54 @@ public class SecurityConfig {
         http
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .csrf(AbstractHttpConfigurer::disable)
+                .httpBasic(AbstractHttpConfigurer::disable)
+                .formLogin(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/**").permitAll()
-                        .requestMatchers("/api/employees/register").permitAll()
-                        .requestMatchers("/api/missions/**").permitAll()
-                        .requestMatchers("/api/leaderboard/**").permitAll()
-                        .requestMatchers("/api/submissions/**").permitAll()
-                        .requestMatchers("/api/employees/**").permitAll()
-                        .requestMatchers("/api/rule-config/**").permitAll()
-                        .anyRequest().permitAll()
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+
+                        // Public: authentication & self-registration
+                        .requestMatchers("/api/auth/login", "/api/auth/refresh", "/api/auth/send-otp",
+                                "/api/auth/verify-otp", "/api/auth/forgot-password").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/employees/register").permitAll()
+
+                        // Public: read-only landing page data
+                        .requestMatchers(HttpMethod.GET, "/api/missions", "/api/missions/*").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/leaderboard/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/employees/units").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/rule-config/**").permitAll()
+
+                        // File download is authorized by a signed, short-lived token in the URL
+                        .requestMatchers(HttpMethod.GET, "/api/submissions/files/download").permitAll()
+
+                        // Logged-in participants
+                        .requestMatchers("/api/auth/logout").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/api/submissions").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/api/submissions/me").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/api/employees/me/valid-status").authenticated()
+
+                        // Everything else under /api is admin-only (BTC)
+                        .requestMatchers("/api/**").hasRole(ADMIN)
+                        .anyRequest().denyAll()
+                )
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint((request, response, e) ->
+                                writeJsonError(response, HttpServletResponse.SC_UNAUTHORIZED,
+                                        "Bạn cần đăng nhập (hoặc phiên đăng nhập đã hết hạn)."))
+                        .accessDeniedHandler((request, response, e) ->
+                                writeJsonError(response, HttpServletResponse.SC_FORBIDDEN,
+                                        "Bạn không có quyền thực hiện thao tác này."))
                 )
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
+    }
+
+    private static void writeJsonError(HttpServletResponse response, int status, String message) throws java.io.IOException {
+        response.setStatus(status);
+        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+        response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+        response.getWriter().write("{\"success\":false,\"message\":\"" + message + "\",\"data\":null}");
     }
 
     @Bean
@@ -65,11 +105,9 @@ public class SecurityConfig {
                 .filter(s -> !s.isEmpty())
                 .toList();
         configuration.setAllowedOrigins(origins);
-        configuration.setAllowedOriginPatterns(List.of("*"));
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("*"));
-        configuration.setExposedHeaders(Arrays.asList("Content-Disposition", "Authorization"));
-        configuration.setAllowCredentials(true);
+        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type"));
+        configuration.setExposedHeaders(List.of("Content-Disposition"));
         configuration.setMaxAge(3600L);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();

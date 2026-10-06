@@ -14,24 +14,35 @@ import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Date;
+import java.util.Optional;
 
 @Slf4j
 @Component
 public class JwtTokenProvider {
+
+    public static final String TYPE_ACCESS = "ACCESS";
+    public static final String TYPE_REFRESH = "REFRESH";
+    public static final String TYPE_FILE = "FILE";
+
+    private static final String CLAIM_TOKEN_TYPE = "tokenType";
+    private static final String CLAIM_OBJECT_KEY = "objectKey";
+    private static final String REFRESH_PREFIX = "REFRESH_TOKEN:";
+    private static final long FILE_TOKEN_EXPIRATION_MS = Duration.ofHours(2).toMillis();
 
     private final SecretKey key;
     private final long accessTokenExpirationMs;
     private final long refreshTokenExpirationMs;
     private final StringRedisTemplate redisTemplate;
 
-    private static final String REFRESH_PREFIX = "REFRESH_TOKEN:";
-
     public JwtTokenProvider(
-            @Value("${jwt.secret:ctin25yearstreasurehunthelticsecretkey2026supersecurekey1234567890}") String secret,
+            @Value("${jwt.secret}") String secret,
             @Value("${jwt.access-token-expiration-ms:86400000}") long accessTokenExpirationMs,
             @Value("${jwt.refresh-token-expiration-ms:604800000}") long refreshTokenExpirationMs,
             StringRedisTemplate redisTemplate
     ) {
+        if (secret == null || secret.getBytes(StandardCharsets.UTF_8).length < 32) {
+            throw new IllegalStateException("JWT_SECRET phải được cấu hình và dài tối thiểu 32 ký tự.");
+        }
         this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
         this.accessTokenExpirationMs = accessTokenExpirationMs;
         this.refreshTokenExpirationMs = refreshTokenExpirationMs;
@@ -47,6 +58,7 @@ public class JwtTokenProvider {
 
         return Jwts.builder()
                 .subject(employee.getEmail())
+                .claim(CLAIM_TOKEN_TYPE, TYPE_ACCESS)
                 .claim("employeeId", employee.getId())
                 .claim("employeeCode", employee.getEmployeeCode())
                 .claim("role", employee.getRole().name())
@@ -65,17 +77,15 @@ public class JwtTokenProvider {
 
         String refreshToken = Jwts.builder()
                 .subject(employee.getEmail())
-                .claim("tokenType", "REFRESH")
+                .claim(CLAIM_TOKEN_TYPE, TYPE_REFRESH)
                 .issuedAt(now)
                 .expiration(expiryDate)
                 .signWith(key)
                 .compact();
 
-        // Store refresh token in Redis with TTL
         try {
             String redisKey = REFRESH_PREFIX + employee.getEmail().trim().toLowerCase();
             redisTemplate.opsForValue().set(redisKey, refreshToken, Duration.ofMillis(refreshTokenExpirationMs));
-            log.info("🔑 [JwtTokenProvider] Refresh token stored in Redis for user {}", employee.getEmail());
         } catch (Exception e) {
             log.warn("⚠️ [JwtTokenProvider] Failed to store refresh token in Redis: {}", e.getMessage());
         }
@@ -84,48 +94,70 @@ public class JwtTokenProvider {
     }
 
     /**
-     * Validate JWT Access or Refresh Token signature & expiration
+     * Short-lived token that authorizes downloading one specific MinIO object.
+     * It is only embedded in responses sent to users allowed to see that submission.
      */
-    public boolean validateToken(String token) {
+    public String generateFileToken(String objectKey) {
+        Date now = new Date();
+        return Jwts.builder()
+                .subject(objectKey)
+                .claim(CLAIM_TOKEN_TYPE, TYPE_FILE)
+                .claim(CLAIM_OBJECT_KEY, objectKey)
+                .issuedAt(now)
+                .expiration(new Date(now.getTime() + FILE_TOKEN_EXPIRATION_MS))
+                .signWith(key)
+                .compact();
+    }
+
+    public boolean validateFileToken(String token, String objectKey) {
+        return parseClaims(token)
+                .filter(c -> TYPE_FILE.equals(c.get(CLAIM_TOKEN_TYPE, String.class)))
+                .map(c -> objectKey != null && objectKey.equals(c.get(CLAIM_OBJECT_KEY, String.class)))
+                .orElse(false);
+    }
+
+    /**
+     * Parse & verify signature/expiration. Empty when the token is invalid.
+     */
+    public Optional<Claims> parseClaims(String token) {
         try {
-            Jwts.parser()
+            return Optional.of(Jwts.parser()
                     .verifyWith(key)
                     .build()
-                    .parseSignedClaims(token);
-            return true;
+                    .parseSignedClaims(token)
+                    .getPayload());
         } catch (JwtException | IllegalArgumentException e) {
-            log.warn("⚠️ [JwtTokenProvider] Invalid JWT token: {}", e.getMessage());
-            return false;
+            log.debug("Invalid JWT token: {}", e.getMessage());
+            return Optional.empty();
         }
     }
 
     /**
-     * Validate Refresh Token against Redis store
+     * Claims of a valid ACCESS token, empty otherwise (refresh/file tokens are rejected).
      */
-    public boolean validateRefreshToken(String email, String refreshToken) {
-        if (!validateToken(refreshToken)) {
-            return false;
+    public Optional<Claims> parseAccessToken(String token) {
+        return parseClaims(token)
+                .filter(c -> TYPE_ACCESS.equals(c.get(CLAIM_TOKEN_TYPE, String.class)));
+    }
+
+    /**
+     * Returns the email of a valid, non-revoked refresh token.
+     */
+    public Optional<String> validateRefreshToken(String refreshToken) {
+        Optional<Claims> claims = parseClaims(refreshToken)
+                .filter(c -> TYPE_REFRESH.equals(c.get(CLAIM_TOKEN_TYPE, String.class)));
+        if (claims.isEmpty()) {
+            return Optional.empty();
         }
+        String email = claims.get().getSubject();
         try {
-            String redisKey = REFRESH_PREFIX + email.trim().toLowerCase();
-            String storedToken = redisTemplate.opsForValue().get(redisKey);
-            return storedToken != null && storedToken.equals(refreshToken);
+            String storedToken = redisTemplate.opsForValue().get(REFRESH_PREFIX + email.trim().toLowerCase());
+            return refreshToken.equals(storedToken) ? Optional.of(email) : Optional.empty();
         } catch (Exception e) {
+            // Fail closed: without Redis we cannot know whether the token was revoked
             log.warn("⚠️ [JwtTokenProvider] Redis read failed during refresh token validation: {}", e.getMessage());
-            return true; // Fallback to JWT signature validation if Redis is down
+            return Optional.empty();
         }
-    }
-
-    /**
-     * Extract Email (subject) from JWT
-     */
-    public String getEmailFromToken(String token) {
-        Claims claims = Jwts.parser()
-                .verifyWith(key)
-                .build()
-                .parseSignedClaims(token)
-                .getPayload();
-        return claims.getSubject();
     }
 
     /**
@@ -133,9 +165,7 @@ public class JwtTokenProvider {
      */
     public void revokeRefreshToken(String email) {
         try {
-            String redisKey = REFRESH_PREFIX + email.trim().toLowerCase();
-            redisTemplate.delete(redisKey);
-            log.info("🚪 [JwtTokenProvider] Revoked refresh token for user {}", email);
+            redisTemplate.delete(REFRESH_PREFIX + email.trim().toLowerCase());
         } catch (Exception e) {
             log.warn("⚠️ [JwtTokenProvider] Could not delete refresh token from Redis: {}", e.getMessage());
         }

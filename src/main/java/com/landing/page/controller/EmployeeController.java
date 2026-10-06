@@ -12,6 +12,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/api/employees")
 @RequiredArgsConstructor
@@ -20,12 +22,12 @@ public class EmployeeController {
     private final EmployeeService employeeService;
 
     @GetMapping
-    public ResponseEntity<ApiResponse<java.util.List<Employee>>> getAllEmployees() {
+    public ResponseEntity<ApiResponse<List<Employee>>> getAllEmployees() {
         return ResponseEntity.ok(ApiResponse.ok(employeeService.getAllEmployees()));
     }
 
     @GetMapping("/units")
-    public ResponseEntity<ApiResponse<java.util.List<Unit>>> getAllUnits() {
+    public ResponseEntity<ApiResponse<List<Unit>>> getAllUnits() {
         return ResponseEntity.ok(ApiResponse.ok(employeeService.getAllUnits()));
     }
 
@@ -37,8 +39,8 @@ public class EmployeeController {
 
     @PostMapping("/register")
     public ResponseEntity<ApiResponse<Employee>> registerEmployee(@Valid @RequestBody EmployeeImportRequest request) {
-        Employee employee = employeeService.importEmployee(request);
-        return ResponseEntity.ok(ApiResponse.ok("Employee registered successfully", employee));
+        Employee employee = employeeService.registerUserRequest(request);
+        return ResponseEntity.ok(ApiResponse.ok("Đăng ký thành công, vui lòng chờ Ban Tổ Chức phê duyệt.", employee));
     }
 
     @PostMapping("/import")
@@ -54,9 +56,16 @@ public class EmployeeController {
     }
 
     @DeleteMapping("/{id}/reject")
-    public ResponseEntity<ApiResponse<Employee>> rejectEmployee(@PathVariable("id") Long id) {
-        Employee employee = employeeService.rejectEmployee(id);
+    public ResponseEntity<ApiResponse<Employee>> rejectEmployee(@PathVariable("id") Long id,
+                                                                @RequestParam(value = "reason", required = false) String reason) {
+        Employee employee = employeeService.rejectEmployee(id, reason);
         return ResponseEntity.ok(ApiResponse.ok("Đã từ chối (REJECTED) yêu cầu đăng ký của nhân sự.", employee));
+    }
+
+    @GetMapping("/me/valid-status")
+    public ResponseEntity<ApiResponse<ValidParticipantResponse>> checkMyValidStatus() {
+        ValidParticipantResponse response = employeeService.checkCurrentEmployeeValidStatus();
+        return ResponseEntity.ok(ApiResponse.ok("Valid participant status retrieved", response));
     }
 
     @GetMapping("/{id}/valid-status")

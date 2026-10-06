@@ -1,5 +1,6 @@
 package com.landing.page.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.landing.page.entity.enums.ApprovalStatus;
 import com.landing.page.entity.enums.Role;
 import jakarta.persistence.*;
@@ -29,6 +30,7 @@ public class Employee {
     @Column(name = "full_name", nullable = false, length = 150)
     private String fullName;
 
+    @JsonIgnore
     @Column(length = 255)
     private String password;
 

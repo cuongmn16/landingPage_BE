@@ -26,6 +26,6 @@ public class EmployeeImportRequest {
     @NotBlank(message = "Unit code is required")
     private String unitCode;
 
-    @Builder.Default
-    private boolean emailVerified = true;
+    // Only used by admin import. Wrapper type: Jackson 3 rejects a missing value for primitives. null = true
+    private Boolean emailVerified;
 }

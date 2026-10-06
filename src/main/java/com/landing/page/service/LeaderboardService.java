@@ -13,7 +13,10 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -26,32 +29,36 @@ public class LeaderboardService {
 
     @Transactional(readOnly = true)
     public List<LeaderboardItemResponse> getUnitLeaderboard() {
-        List<Unit> units = unitRepository.findAll();
+        long minRequired = employeeService.getMinRequiredMissions();
+
+        // Bulk-load everything once instead of querying per employee
+        Map<Long, Long> validCountByEmployee = new HashMap<>();
+        for (Object[] row : submissionRepository.countSubmissionsGroupedByEmployee(EmployeeService.VALID_SUBMISSION_STATUSES)) {
+            validCountByEmployee.put((Long) row[0], (Long) row[1]);
+        }
+        Map<Long, LocalDateTime> lastUpdatedByUnit = new HashMap<>();
+        for (Object[] row : submissionRepository.findMaxLastUpdatedAtGroupedByUnit()) {
+            lastUpdatedByUnit.put((Long) row[0], (LocalDateTime) row[1]);
+        }
+        Map<Long, List<Employee>> employeesByUnit = employeeRepository.findAll().stream()
+                .collect(Collectors.groupingBy(e -> e.getUnit().getId()));
+
         List<LeaderboardItemResponse> leaderboard = new ArrayList<>();
+        for (Unit unit : unitRepository.findAll()) {
+            List<Employee> unitEmployees = employeesByUnit.getOrDefault(unit.getId(), List.of());
 
-        for (Unit unit : units) {
-            List<Employee> unitEmployees = employeeRepository.findByUnitId(unit.getId());
-            
-            // Calculate number of valid participants in unit
-            int validParticipantsCount = 0;
-            for (Employee emp : unitEmployees) {
-                if (employeeService.checkValidParticipant(emp.getId()).isValidParticipant()) {
-                    validParticipantsCount++;
-                }
-            }
+            int validParticipantsCount = (int) unitEmployees.stream()
+                    .filter(e -> Boolean.TRUE.equals(e.getIsEmailVerified()))
+                    .filter(e -> validCountByEmployee.getOrDefault(e.getId(), 0L) >= minRequired)
+                    .count();
 
-            int totalPersonnel = unit.getTotalPersonnel() != null && unit.getTotalPersonnel() > 0 
-                    ? unit.getTotalPersonnel() 
+            int totalPersonnel = unit.getTotalPersonnel() != null && unit.getTotalPersonnel() > 0
+                    ? unit.getTotalPersonnel()
                     : Math.max(1, unitEmployees.size());
 
             // Formula: Participation Rate % = (Valid Participants / Total Target Personnel) * 100%
             double participationRate = ((double) validParticipantsCount / totalPersonnel) * 100.0;
-            // Round to 2 decimal places
             double roundedRate = Math.round(participationRate * 100.0) / 100.0;
-
-            // Get last updated timestamp of submissions for this unit
-            LocalDateTime lastUpdated = submissionRepository.findMaxLastUpdatedAtByUnitId(unit.getId())
-                    .orElse(unit.getUpdatedAt());
 
             leaderboard.add(LeaderboardItemResponse.builder()
                     .unitId(unit.getId())
@@ -60,20 +67,18 @@ public class LeaderboardService {
                     .totalPersonnel(totalPersonnel)
                     .validParticipantsCount(validParticipantsCount)
                     .participationRatePercent(roundedRate)
-                    .lastUpdatedAt(lastUpdated)
+                    .lastUpdatedAt(lastUpdatedByUnit.getOrDefault(unit.getId(), unit.getUpdatedAt()))
                     .build());
         }
 
-        // Sort leaderboard by participationRatePercent descending, then validParticipantsCount descending
+        // Sort by participation rate desc, then valid participants desc
         leaderboard.sort(Comparator
                 .comparing(LeaderboardItemResponse::getParticipationRatePercent).reversed()
                 .thenComparing(Comparator.comparing(LeaderboardItemResponse::getValidParticipantsCount).reversed()));
 
-        // Assign ranks (1, 2, 3...)
         for (int i = 0; i < leaderboard.size(); i++) {
             leaderboard.get(i).setRank(i + 1);
         }
-
         return leaderboard;
     }
 }

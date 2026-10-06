@@ -5,8 +5,11 @@ import com.landing.page.dto.request.RefreshTokenRequest;
 import com.landing.page.dto.response.ApiResponse;
 import com.landing.page.dto.response.AuthResponse;
 import com.landing.page.entity.Employee;
+import com.landing.page.entity.enums.ApprovalStatus;
 import com.landing.page.repository.EmployeeRepository;
 import com.landing.page.security.JwtTokenProvider;
+import com.landing.page.security.PasswordGenerator;
+import com.landing.page.security.SecurityUtils;
 import com.landing.page.service.EmailService;
 import com.landing.page.service.OtpService;
 import jakarta.validation.Valid;
@@ -16,13 +19,13 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.Random;
-
 @Slf4j
 @RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
 public class AuthController {
+
+    private static final String BAD_CREDENTIALS = "Email/mã nhân viên hoặc mật khẩu không chính xác.";
 
     private final OtpService otpService;
     private final EmailService emailService;
@@ -42,41 +45,85 @@ public class AuthController {
     @PostMapping("/verify-otp")
     public ResponseEntity<ApiResponse<Boolean>> verifyOtp(@RequestParam("email") String email, @RequestParam("otpCode") String otpCode) {
         otpService.verifyOtp(email, otpCode);
-        return ResponseEntity.ok(ApiResponse.ok("Xác thực OTP thành công! Email đã được xác minh tồn tại thực tế.", true));
+        return ResponseEntity.ok(ApiResponse.ok("Xác thực OTP thành công!", true));
     }
 
     @PostMapping("/login")
     public ResponseEntity<ApiResponse<AuthResponse>> login(@Valid @RequestBody LoginRequest request) {
         String input = request.getUsernameOrEmail().trim();
-        Employee employee = employeeRepository.findByEmail(input)
+        Employee employee = employeeRepository.findByEmail(input.toLowerCase())
+                .or(() -> employeeRepository.findByEmail(input))
                 .or(() -> employeeRepository.findByEmployeeCode(input))
-                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy tài khoản với email/mã nhân viên: " + input));
+                .orElseThrow(() -> new IllegalArgumentException(BAD_CREDENTIALS));
 
-        String inputPassword = request.getPassword();
+        if (employee.getApprovalStatus() != ApprovalStatus.ACCEPTED) {
+            throw new IllegalArgumentException("Tài khoản của bạn đang ở trạng thái Chờ Ban Tổ Chức phê duyệt. Vui lòng quay lại sau khi nhận được email kích hoạt mật khẩu.");
+        }
+
         String dbPassword = employee.getPassword();
-
-        // 1. Verify password using BCrypt with legacy plain text fallback support
-        boolean isMatch = (dbPassword != null) &&
-                (passwordEncoder.matches(inputPassword, dbPassword) || inputPassword.equals(dbPassword));
-
-        if (!isMatch) {
-            throw new IllegalArgumentException("Mật khẩu không chính xác.");
+        if (dbPassword == null || !passwordEncoder.matches(request.getPassword(), dbPassword)) {
+            throw new IllegalArgumentException(BAD_CREDENTIALS);
         }
 
-        // Auto-upgrade legacy plain text password to BCrypt hash in DB if needed
-        if (inputPassword.equals(dbPassword) && (dbPassword == null || !dbPassword.startsWith("$2a$"))) {
-            employee.setPassword(passwordEncoder.encode(inputPassword));
-            employeeRepository.save(employee);
-            log.info("🔒 [BCrypt] Auto-upgraded password to BCrypt hash for user {}", employee.getEmail());
-        }
+        return ResponseEntity.ok(ApiResponse.ok("Đăng nhập thành công", buildAuthResponse(employee)));
+    }
 
-        // 2. Generate Access Token & Refresh Token
+    @PostMapping("/refresh")
+    public ResponseEntity<ApiResponse<AuthResponse>> refreshToken(@Valid @RequestBody RefreshTokenRequest request) {
+        String email = jwtTokenProvider.validateRefreshToken(request.getRefreshToken())
+                .orElseThrow(() -> new IllegalArgumentException("Refresh Token không hợp lệ, đã hết hạn hoặc đã bị thu hồi."));
+
+        Employee employee = employeeRepository.findByEmail(email)
+                .filter(e -> e.getApprovalStatus() == ApprovalStatus.ACCEPTED)
+                .orElseThrow(() -> new IllegalArgumentException("Tài khoản không còn hợp lệ."));
+
+        return ResponseEntity.ok(ApiResponse.ok("Cấp lại AccessToken thành công!", buildAuthResponse(employee)));
+    }
+
+    @PostMapping("/logout")
+    public ResponseEntity<ApiResponse<String>> logout() {
+        SecurityUtils.currentEmail().ifPresent(jwtTokenProvider::revokeRefreshToken);
+        return ResponseEntity.ok(ApiResponse.ok("Đăng xuất và thu hồi Refresh Token thành công.", ""));
+    }
+
+    /**
+     * Reset password. The caller must first request an OTP (/send-otp) and prove
+     * ownership of the mailbox by sending that code here.
+     */
+    @PostMapping("/forgot-password")
+    public ResponseEntity<ApiResponse<String>> forgotPassword(@RequestParam("email") String email,
+                                                              @RequestParam("otpCode") String otpCode) {
+        if (email == null || email.isBlank()) {
+            throw new IllegalArgumentException("Vui lòng nhập địa chỉ email của bạn.");
+        }
+        String cleanEmail = email.trim().toLowerCase();
+        otpService.verifyOtp(cleanEmail, otpCode);
+        otpService.consumeVerifiedEmail(cleanEmail);
+
+        Employee employee = employeeRepository.findByEmail(cleanEmail)
+                .filter(e -> e.getApprovalStatus() == ApprovalStatus.ACCEPTED)
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy tài khoản đã được phê duyệt với email: " + cleanEmail));
+
+        String rawPassword = PasswordGenerator.generate();
+        employee.setPassword(passwordEncoder.encode(rawPassword));
+        employeeRepository.save(employee);
+        jwtTokenProvider.revokeRefreshToken(cleanEmail);
+
+        emailService.sendForgotPasswordEmail(
+                employee.getEmail(),
+                employee.getFullName(),
+                employee.getEmployeeCode(),
+                rawPassword
+        );
+
+        return ResponseEntity.ok(ApiResponse.ok("Mật khẩu mới đã được gửi tới email " + cleanEmail + ". Vui lòng kiểm tra hộp thư!", cleanEmail));
+    }
+
+    private AuthResponse buildAuthResponse(Employee employee) {
         String accessToken = jwtTokenProvider.generateAccessToken(employee);
-        String refreshToken = jwtTokenProvider.generateRefreshToken(employee);
-
-        AuthResponse authResponse = AuthResponse.builder()
+        return AuthResponse.builder()
                 .accessToken(accessToken)
-                .refreshToken(refreshToken)
+                .refreshToken(jwtTokenProvider.generateRefreshToken(employee))
                 .token(accessToken) // Backward-compatibility alias for frontend
                 .tokenType("Bearer")
                 .expiresIn(jwtTokenProvider.getAccessTokenExpirationMs())
@@ -88,73 +135,5 @@ public class AuthController {
                 .unitCode(employee.getUnit().getCode())
                 .unitName(employee.getUnit().getName())
                 .build();
-
-        return ResponseEntity.ok(ApiResponse.ok("Đăng nhập thành công với quyền " + employee.getRole(), authResponse));
-    }
-
-    @PostMapping("/refresh")
-    public ResponseEntity<ApiResponse<AuthResponse>> refreshToken(@Valid @RequestBody RefreshTokenRequest request) {
-        String refreshToken = request.getRefreshToken();
-        if (!jwtTokenProvider.validateToken(refreshToken)) {
-            throw new IllegalArgumentException("Refresh Token không hợp lệ hoặc đã hết hạn.");
-        }
-
-        String email = jwtTokenProvider.getEmailFromToken(refreshToken);
-        if (!jwtTokenProvider.validateRefreshToken(email, refreshToken)) {
-            throw new IllegalArgumentException("Refresh Token đã bị thu hồi hoặc không chính xác.");
-        }
-
-        Employee employee = employeeRepository.findByEmail(email)
-                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy thông tin tài khoản nhân viên."));
-
-        String newAccessToken = jwtTokenProvider.generateAccessToken(employee);
-        String newRefreshToken = jwtTokenProvider.generateRefreshToken(employee);
-
-        AuthResponse authResponse = AuthResponse.builder()
-                .accessToken(newAccessToken)
-                .refreshToken(newRefreshToken)
-                .token(newAccessToken)
-                .tokenType("Bearer")
-                .expiresIn(jwtTokenProvider.getAccessTokenExpirationMs())
-                .employeeId(employee.getId())
-                .employeeCode(employee.getEmployeeCode())
-                .email(employee.getEmail())
-                .fullName(employee.getFullName())
-                .role(employee.getRole())
-                .unitCode(employee.getUnit().getCode())
-                .unitName(employee.getUnit().getName())
-                .build();
-
-        return ResponseEntity.ok(ApiResponse.ok("Cấp lại AccessToken thành công!", authResponse));
-    }
-
-    @PostMapping("/logout")
-    public ResponseEntity<ApiResponse<String>> logout(@RequestParam("email") String email) {
-        jwtTokenProvider.revokeRefreshToken(email);
-        return ResponseEntity.ok(ApiResponse.ok("Đăng xuất và thu hồi Refresh Token thành công.", email));
-    }
-
-    @PostMapping("/forgot-password")
-    public ResponseEntity<ApiResponse<String>> forgotPassword(@RequestParam("email") String email) {
-        if (email == null || email.isBlank()) {
-            throw new IllegalArgumentException("Vui lòng nhập địa chỉ email của bạn.");
-        }
-        String cleanEmail = email.trim().toLowerCase();
-        Employee employee = employeeRepository.findByEmail(cleanEmail)
-                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy tài khoản nhân viên tương ứng với email: " + cleanEmail));
-
-        // Generate a new 6-digit random password for security
-        String rawPassword = String.format("%06d", new Random().nextInt(900000) + 100000);
-        employee.setPassword(passwordEncoder.encode(rawPassword));
-        employeeRepository.save(employee);
-
-        emailService.sendForgotPasswordEmail(
-                employee.getEmail(),
-                employee.getFullName(),
-                employee.getEmployeeCode(),
-                rawPassword
-        );
-
-        return ResponseEntity.ok(ApiResponse.ok("Mật khẩu mới đã được khởi tạo và gửi tới email " + cleanEmail + ". Vui lòng kiểm tra hộp thư!", cleanEmail));
     }
 }

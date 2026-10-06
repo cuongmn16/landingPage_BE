@@ -9,6 +9,8 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.InputStream;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
@@ -74,7 +76,8 @@ public class MinioService {
         validateFile(file);
         ensureBucketExists();
 
-        String originalFilename = StringUtils.cleanPath(file.getOriginalFilename());
+        // Keep only the file name part (some browsers send a full client path)
+        String originalFilename = StringUtils.getFilename(StringUtils.cleanPath(file.getOriginalFilename()));
         String objectKey = prefixFolder + "/" + UUID.randomUUID().toString() + "_" + originalFilename;
 
         try (InputStream inputStream = file.getInputStream()) {
@@ -141,6 +144,6 @@ public class MinioService {
 
     public String getFileUrl(String objectKey) {
         // Return direct URL endpoint handled by backend controller
-        return String.format("/api/submissions/files/download?key=%s", objectKey);
+        return "/api/submissions/files/download?key=" + URLEncoder.encode(objectKey, StandardCharsets.UTF_8);
     }
 }

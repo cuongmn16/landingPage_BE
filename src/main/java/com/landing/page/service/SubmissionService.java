@@ -10,19 +10,25 @@ import com.landing.page.entity.SubmissionAttachment;
 import com.landing.page.entity.enums.SubmissionStatus;
 import com.landing.page.repository.EmployeeRepository;
 import com.landing.page.repository.MissionRepository;
-import com.landing.page.repository.SubmissionAttachmentRepository;
 import com.landing.page.repository.SubmissionRepository;
+import com.landing.page.security.JwtTokenProvider;
+import com.landing.page.security.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
-import java.util.stream.Collectors;
+import java.util.Objects;
 
 @Slf4j
 @Service
@@ -30,58 +36,38 @@ import java.util.stream.Collectors;
 public class SubmissionService {
 
     private final SubmissionRepository submissionRepository;
-    private final SubmissionAttachmentRepository attachmentRepository;
     private final EmployeeRepository employeeRepository;
     private final MissionRepository missionRepository;
     private final MinioService minioService;
+    private final JwtTokenProvider jwtTokenProvider;
 
     @Value("${app.submission.max-files-per-mission:5}")
     private int maxFilesPerMission;
 
     @Transactional
     public SubmissionResponse submitOrUpdate(SubmissionRequest request, List<MultipartFile> files) {
-        Employee employee = null;
-
-        // 1. Try extracting logged-in employee from Spring Security Context (JWT authentication token)
-        org.springframework.security.core.Authentication auth =
-                org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
-
-        if (auth != null && auth.isAuthenticated() && !"anonymousUser".equals(auth.getPrincipal())) {
-            String email = auth.getName();
-            if (email != null && !email.isBlank()) {
-                employee = employeeRepository.findByEmail(email.trim()).orElse(null);
-            }
-        }
-
-        // 2. Fallback to request.getEmployeeId() if token resolution was not available
-        if (employee == null && request.getEmployeeId() != null) {
-            employee = employeeRepository.findById(request.getEmployeeId())
-                    .orElse(null);
-        }
-
-        if (employee == null) {
-            throw new IllegalArgumentException("Không tìm thấy thông tin nhân viên. Vui lòng đăng nhập lại tài khoản nhân viên.");
-        }
+        // The submitter is always the authenticated user; request.employeeId is ignored on purpose.
+        Employee employee = currentEmployee();
 
         Mission mission = missionRepository.findById(request.getMissionId())
-                .orElseThrow(() -> new IllegalArgumentException("Mission not found with ID: " + request.getMissionId()));
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy Mission với ID: " + request.getMissionId()));
 
-        // Check if submission already exists for this employee and mission
+        boolean missionOpen = Boolean.TRUE.equals(mission.getIsOpen())
+                && (mission.getEndTime() == null || LocalDateTime.now().isBefore(mission.getEndTime()));
+
         Submission submission = submissionRepository
                 .findByEmployeeIdAndMissionId(employee.getId(), mission.getId())
                 .orElse(null);
 
         if (submission != null) {
-            // Check edit permission: Mission must be open OR submission status REOPENED by BTC
-            boolean canEdit = Boolean.TRUE.equals(mission.getIsOpen()) || submission.getStatus() == SubmissionStatus.REOPENED;
-            if (!canEdit) {
-                throw new IllegalStateException("Mission is closed. Players can only view status and cannot modify submission.");
+            // Edit allowed while mission is open, or when BTC re-opened this submission
+            if (!missionOpen && submission.getStatus() != SubmissionStatus.REOPENED) {
+                throw new IllegalStateException("Mission đã đóng. Bạn chỉ có thể xem trạng thái, không thể sửa bài nộp.");
             }
-            log.info("Updating existing submission ID: {} for employee: {} in mission: {}", submission.getId(), employee.getEmployeeCode(), mission.getCode());
+            log.info("Updating submission ID: {} for employee: {} in mission: {}", submission.getId(), employee.getEmployeeCode(), mission.getCode());
         } else {
-            // New submission check: mission must be open
-            if (!Boolean.TRUE.equals(mission.getIsOpen())) {
-                throw new IllegalStateException("Mission is currently closed for new submissions.");
+            if (!missionOpen) {
+                throw new IllegalStateException("Mission hiện đang đóng, không nhận bài nộp mới.");
             }
             submission = Submission.builder()
                     .employee(employee)
@@ -103,63 +89,72 @@ public class SubmissionService {
             submission.setStatus(SubmissionStatus.SUBMITTED); // Reset to SUBMITTED after edit
         }
 
-        // Handle uploaded files if provided
-        if (files != null && !files.isEmpty()) {
-            // Filter out empty files
-            List<MultipartFile> validFiles = files.stream()
-                    .filter(f -> f != null && !f.isEmpty())
-                    .collect(Collectors.toList());
+        List<MultipartFile> validFiles = files == null ? List.of() : files.stream()
+                .filter(f -> f != null && !f.isEmpty())
+                .toList();
 
-            if (!validFiles.isEmpty()) {
-                if (validFiles.size() > maxFilesPerMission) {
-                    throw new IllegalArgumentException("Exceeded maximum of " + maxFilesPerMission + " files allowed per Mission.");
-                }
+        if (!validFiles.isEmpty()) {
+            if (validFiles.size() > maxFilesPerMission) {
+                throw new IllegalArgumentException("Tối đa " + maxFilesPerMission + " tệp cho mỗi Mission.");
+            }
+            validFiles.forEach(minioService::validateFile);
 
-                // Delete existing attachments from MinIO and DB if updating
-                if (submission.getAttachments() != null && !submission.getAttachments().isEmpty()) {
-                    List<SubmissionAttachment> oldAttachments = new ArrayList<>(submission.getAttachments());
-                    for (SubmissionAttachment oldAtt : oldAttachments) {
-                        minioService.deleteFile(oldAtt.getObjectKey());
-                        submission.removeAttachment(oldAtt);
-                    }
-                }
+            // Old objects are removed from MinIO only after the DB commit succeeds;
+            // newly uploaded objects are removed if the transaction rolls back.
+            List<String> oldKeys = new ArrayList<>();
+            for (SubmissionAttachment oldAtt : new ArrayList<>(submission.getAttachments())) {
+                oldKeys.add(oldAtt.getObjectKey());
+                submission.removeAttachment(oldAtt);
+            }
+            List<String> newKeys = new ArrayList<>();
+            registerStorageCleanup(oldKeys, newKeys);
 
-                // Upload new files
-                String folder = String.format("submissions/mission_%d/emp_%d", mission.getId(), employee.getId());
-                for (MultipartFile file : validFiles) {
-                    minioService.validateFile(file);
-                    String objectKey = minioService.uploadFile(file, folder);
-                    String fileUrl = minioService.getFileUrl(objectKey);
+            String folder = String.format("submissions/mission_%d/emp_%d", mission.getId(), employee.getId());
+            for (MultipartFile file : validFiles) {
+                String objectKey = minioService.uploadFile(file, folder);
+                newKeys.add(objectKey);
 
-                    SubmissionAttachment attachment = SubmissionAttachment.builder()
-                            .originalFileName(file.getOriginalFilename())
-                            .objectKey(objectKey)
-                            .fileUrl(fileUrl)
-                            .contentType(file.getContentType())
-                            .fileSizeBytes(file.getSize())
-                            .build();
-
-                    submission.addAttachment(attachment);
-                }
+                submission.addAttachment(SubmissionAttachment.builder()
+                        .originalFileName(file.getOriginalFilename())
+                        .objectKey(objectKey)
+                        .fileUrl(minioService.getFileUrl(objectKey))
+                        .contentType(file.getContentType())
+                        .fileSizeBytes(file.getSize())
+                        .build());
             }
         }
 
-        Submission saved = submissionRepository.save(submission);
-        return mapToResponse(saved);
+        return mapToResponse(submissionRepository.save(submission));
+    }
+
+    private void registerStorageCleanup(List<String> deleteOnCommit, List<String> deleteOnRollback) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCompletion(int status) {
+                List<String> keys = status == STATUS_COMMITTED ? deleteOnCommit : deleteOnRollback;
+                keys.forEach(minioService::deleteFile);
+            }
+        });
+    }
+
+    @Transactional(readOnly = true)
+    public List<SubmissionResponse> getMySubmissions() {
+        return submissionRepository.findByEmployeeId(currentEmployee().getId()).stream()
+                .map(this::mapToResponse)
+                .toList();
     }
 
     @Transactional(readOnly = true)
     public List<SubmissionResponse> getAllSubmissions() {
         return submissionRepository.findAll().stream()
-                .sorted((a, b) -> {
-                    LocalDateTime t1 = a.getLastUpdatedAt() != null ? a.getLastUpdatedAt() : a.getSubmissionTime();
-                    LocalDateTime t2 = b.getLastUpdatedAt() != null ? b.getLastUpdatedAt() : b.getSubmissionTime();
-                    if (t1 == null) return 1;
-                    if (t2 == null) return -1;
-                    return t2.compareTo(t1);
-                })
+                .sorted(Comparator.comparing(
+                        (Submission s) -> s.getLastUpdatedAt() != null ? s.getLastUpdatedAt() : s.getSubmissionTime(),
+                        Comparator.nullsLast(Comparator.reverseOrder())))
                 .map(this::mapToResponse)
-                .collect(Collectors.toList());
+                .toList();
     }
 
     @Transactional(readOnly = true)
@@ -173,7 +168,7 @@ public class SubmissionService {
     public List<SubmissionResponse> getSubmissionsByMission(Long missionId) {
         return submissionRepository.findByMissionId(missionId).stream()
                 .map(this::mapToResponse)
-                .collect(Collectors.toList());
+                .toList();
     }
 
     @Transactional
@@ -186,6 +181,9 @@ public class SubmissionService {
 
     @Transactional
     public SubmissionResponse updateSubmissionStatus(Long submissionId, SubmissionStatus status, Double score) {
+        if (score != null && (score < 0 || score > 100)) {
+            throw new IllegalArgumentException("Điểm không hợp lệ (0–100).");
+        }
         Submission submission = submissionRepository.findById(submissionId)
                 .orElseThrow(() -> new IllegalArgumentException("Submission not found with ID: " + submissionId));
         if (status != null) {
@@ -197,19 +195,41 @@ public class SubmissionService {
         return mapToResponse(submissionRepository.save(submission));
     }
 
+    /**
+     * Check the signed download token issued in {@link #mapToResponse}.
+     */
+    public void assertCanDownload(String objectKey, String token) {
+        if (objectKey == null || token == null || !jwtTokenProvider.validateFileToken(token, objectKey)) {
+            throw new org.springframework.security.access.AccessDeniedException("Link tải file không hợp lệ hoặc đã hết hạn. Vui lòng tải lại trang.");
+        }
+    }
+
+    private Employee currentEmployee() {
+        String email = SecurityUtils.currentEmail()
+                .orElseThrow(() -> new IllegalArgumentException("Vui lòng đăng nhập lại tài khoản nhân viên."));
+        return employeeRepository.findByEmail(email)
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy thông tin nhân viên. Vui lòng đăng nhập lại."));
+    }
+
+    private String signedFileUrl(String objectKey) {
+        return minioService.getFileUrl(objectKey)
+                + "&token=" + URLEncoder.encode(jwtTokenProvider.generateFileToken(objectKey), StandardCharsets.UTF_8);
+    }
+
     public SubmissionResponse mapToResponse(Submission s) {
-        List<AttachmentResponse> attachmentResponses = (s.getAttachments() == null) ? List.of() :
+        List<AttachmentResponse> attachmentResponses = s.getAttachments() == null ? List.of() :
                 s.getAttachments().stream()
+                        .filter(Objects::nonNull)
                         .map(a -> AttachmentResponse.builder()
                                 .id(a.getId())
                                 .originalFileName(a.getOriginalFileName())
                                 .objectKey(a.getObjectKey())
-                                .fileUrl(a.getFileUrl())
+                                .fileUrl(signedFileUrl(a.getObjectKey()))
                                 .contentType(a.getContentType())
                                 .fileSizeBytes(a.getFileSizeBytes())
                                 .uploadedAt(a.getUploadedAt())
                                 .build())
-                        .collect(Collectors.toList());
+                        .toList();
 
         return SubmissionResponse.builder()
                 .id(s.getId())

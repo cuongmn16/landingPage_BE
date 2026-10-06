@@ -6,8 +6,12 @@ import com.landing.page.dto.response.SubmissionResponse;
 import com.landing.page.entity.enums.SubmissionStatus;
 import com.landing.page.service.MinioService;
 import com.landing.page.service.SubmissionService;
+import io.minio.StatObjectResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.core.io.InputStreamResource;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -16,10 +20,6 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
-import io.minio.StatObjectResponse;
-import org.springframework.core.io.InputStreamResource;
-import org.springframework.http.ContentDisposition;
-import org.springframework.http.HttpHeaders;
 
 @RestController
 @RequestMapping("/api/submissions")
@@ -40,20 +40,23 @@ public class SubmissionController {
     @GetMapping("/files/download")
     public ResponseEntity<InputStreamResource> downloadFile(
             @RequestParam("key") String objectKey,
+            @RequestParam(value = "token", required = false) String token,
             @RequestParam(value = "download", required = false, defaultValue = "false") boolean download) {
-        InputStream stream = minioService.getFileStream(objectKey);
-        StatObjectResponse stat = minioService.getFileStat(objectKey);
+        submissionService.assertCanDownload(objectKey, token);
 
-        String contentType = (stat != null && stat.contentType() != null && !stat.contentType().isBlank())
+        StatObjectResponse stat = minioService.getFileStat(objectKey);
+        if (stat == null) {
+            throw new IllegalArgumentException("Không tìm thấy file.");
+        }
+        InputStream stream = minioService.getFileStream(objectKey);
+
+        String contentType = (stat.contentType() != null && !stat.contentType().isBlank())
                 ? stat.contentType()
                 : MediaType.APPLICATION_OCTET_STREAM_VALUE;
 
-        String fileName = "file";
-        if (objectKey.contains("_")) {
-            fileName = objectKey.substring(objectKey.indexOf("_") + 1);
-        } else if (objectKey.contains("/")) {
-            fileName = objectKey.substring(objectKey.lastIndexOf("/") + 1);
-        }
+        // Object key format: <folder>/<uuid>_<originalFileName>
+        String baseName = objectKey.substring(objectKey.lastIndexOf('/') + 1);
+        String fileName = baseName.contains("_") ? baseName.substring(baseName.indexOf('_') + 1) : baseName;
 
         HttpHeaders headers = new HttpHeaders();
         try {
@@ -66,17 +69,25 @@ public class SubmissionController {
                 ? ContentDisposition.attachment().filename(fileName, StandardCharsets.UTF_8).build()
                 : ContentDisposition.inline().filename(fileName, StandardCharsets.UTF_8).build();
         headers.setContentDisposition(disposition);
+        headers.set("X-Content-Type-Options", "nosniff");
 
         return ResponseEntity.ok()
                 .headers(headers)
-                .contentLength(stat != null ? stat.size() : -1)
+                .contentLength(stat.size())
                 .body(new InputStreamResource(stream));
+    }
+
+    /**
+     * Submissions of the logged-in participant.
+     */
+    @GetMapping("/me")
+    public ResponseEntity<ApiResponse<List<SubmissionResponse>>> getMySubmissions() {
+        return ResponseEntity.ok(ApiResponse.ok(submissionService.getMySubmissions()));
     }
 
     @GetMapping("/all")
     public ResponseEntity<ApiResponse<List<SubmissionResponse>>> getAllSubmissions() {
-        List<SubmissionResponse> list = submissionService.getAllSubmissions();
-        return ResponseEntity.ok(ApiResponse.ok(list));
+        return ResponseEntity.ok(ApiResponse.ok(submissionService.getAllSubmissions()));
     }
 
     @GetMapping
@@ -84,18 +95,15 @@ public class SubmissionController {
             @RequestParam(value = "employeeId", required = false) Long employeeId,
             @RequestParam(value = "missionId", required = false) Long missionId) {
         if (employeeId != null && missionId != null) {
-            SubmissionResponse response = submissionService.getSubmission(employeeId, missionId);
-            return ResponseEntity.ok(ApiResponse.ok(response));
+            return ResponseEntity.ok(ApiResponse.ok(submissionService.getSubmission(employeeId, missionId)));
         }
-        List<SubmissionResponse> list = submissionService.getAllSubmissions();
-        return ResponseEntity.ok(ApiResponse.ok(list));
+        return ResponseEntity.ok(ApiResponse.ok(submissionService.getAllSubmissions()));
     }
 
     @GetMapping("/mission/{missionId}")
     public ResponseEntity<ApiResponse<List<SubmissionResponse>>> getSubmissionsByMission(
             @PathVariable("missionId") Long missionId) {
-        List<SubmissionResponse> list = submissionService.getSubmissionsByMission(missionId);
-        return ResponseEntity.ok(ApiResponse.ok(list));
+        return ResponseEntity.ok(ApiResponse.ok(submissionService.getSubmissionsByMission(missionId)));
     }
 
     @PutMapping("/{id}/reopen")
@@ -107,8 +115,16 @@ public class SubmissionController {
     @PutMapping("/{id}/status")
     public ResponseEntity<ApiResponse<SubmissionResponse>> updateStatus(
             @PathVariable("id") Long id,
-            @RequestParam(value = "status", required = false) SubmissionStatus status,
+            @RequestParam(value = "status", required = false) String statusStr,
             @RequestParam(value = "score", required = false) Double score) {
+        SubmissionStatus status = null;
+        if (statusStr != null && !statusStr.isBlank()) {
+            try {
+                status = SubmissionStatus.valueOf(statusStr.trim().toUpperCase());
+            } catch (IllegalArgumentException e) {
+                throw new IllegalArgumentException("Trạng thái bài nộp không hợp lệ: " + statusStr);
+            }
+        }
         SubmissionResponse response = submissionService.updateSubmissionStatus(id, status, score);
         return ResponseEntity.ok(ApiResponse.ok("Submission status and score updated", response));
     }

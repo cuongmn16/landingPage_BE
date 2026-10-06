@@ -22,7 +22,7 @@ public class MissionService {
 
         mission.setTitle(request.getTitle());
         mission.setDescription(request.getDescription());
-        mission.setIsOpen(request.isOpen());
+        mission.setIsOpen(!Boolean.FALSE.equals(request.getIsOpen()));
 
         return missionRepository.save(mission);
     }
