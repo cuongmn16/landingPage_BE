@@ -7,6 +7,7 @@ import com.landing.page.repository.EmployeeRepository;
 import com.landing.page.repository.SubmissionRepository;
 import com.landing.page.repository.UnitRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,6 +17,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -26,6 +28,9 @@ public class LeaderboardService {
     private final EmployeeRepository employeeRepository;
     private final SubmissionRepository submissionRepository;
     private final EmployeeService employeeService;
+
+    @Value("${app.leaderboard.excluded-unit-codes:PB_BTC}")
+    private Set<String> excludedUnitCodes;
 
     @Transactional(readOnly = true)
     public List<LeaderboardItemResponse> getUnitLeaderboard() {
@@ -45,6 +50,9 @@ public class LeaderboardService {
 
         List<LeaderboardItemResponse> leaderboard = new ArrayList<>();
         for (Unit unit : unitRepository.findAll()) {
+            if (excludedUnitCodes.contains(unit.getCode())) {
+                continue; // e.g. the organizing committee (BTC) does not compete
+            }
             List<Employee> unitEmployees = employeesByUnit.getOrDefault(unit.getId(), List.of());
 
             int validParticipantsCount = (int) unitEmployees.stream()
@@ -76,8 +84,14 @@ public class LeaderboardService {
                 .comparing(LeaderboardItemResponse::getParticipationRatePercent).reversed()
                 .thenComparing(Comparator.comparing(LeaderboardItemResponse::getValidParticipantsCount).reversed()));
 
+        // Standard competition ranking: units with the same rate and count share a rank (1, 1, 3, ...)
         for (int i = 0; i < leaderboard.size(); i++) {
-            leaderboard.get(i).setRank(i + 1);
+            LeaderboardItemResponse current = leaderboard.get(i);
+            LeaderboardItemResponse previous = i > 0 ? leaderboard.get(i - 1) : null;
+            boolean tied = previous != null
+                    && previous.getParticipationRatePercent().equals(current.getParticipationRatePercent())
+                    && previous.getValidParticipantsCount().equals(current.getValidParticipantsCount());
+            current.setRank(tied ? previous.getRank() : i + 1);
         }
         return leaderboard;
     }
