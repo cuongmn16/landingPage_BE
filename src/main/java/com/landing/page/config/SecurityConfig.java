@@ -31,6 +31,7 @@ import java.util.List;
 public class SecurityConfig {
 
     private static final String ADMIN = "ADMIN";
+    private static final String USER = "USER";
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
 
@@ -67,11 +68,11 @@ public class SecurityConfig {
                         // File download is authorized by a signed, short-lived token in the URL
                         .requestMatchers(HttpMethod.GET, "/api/submissions/files/download").permitAll()
 
-                        // Logged-in participants
+                        // Logged-in participants (admin accounts cannot submit)
                         .requestMatchers("/api/auth/logout").authenticated()
-                        .requestMatchers(HttpMethod.POST, "/api/submissions").authenticated()
-                        .requestMatchers(HttpMethod.GET, "/api/submissions/me").authenticated()
-                        .requestMatchers(HttpMethod.GET, "/api/employees/me/valid-status").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/api/submissions").hasRole(USER)
+                        .requestMatchers(HttpMethod.GET, "/api/submissions/me").hasRole(USER)
+                        .requestMatchers(HttpMethod.GET, "/api/employees/me/valid-status").hasRole(USER)
 
                         // Everything else under /api is admin-only (BTC)
                         .requestMatchers("/api/**").hasRole(ADMIN)

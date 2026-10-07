@@ -8,10 +8,8 @@ import com.landing.page.entity.enums.Role;
 import com.landing.page.repository.EmployeeRepository;
 import com.landing.page.repository.MissionRepository;
 import com.landing.page.repository.UnitRepository;
-import com.landing.page.security.PasswordGenerator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -24,19 +22,14 @@ import java.util.List;
 @RequiredArgsConstructor
 public class DataInitializer implements CommandLineRunner {
 
-    private static final String LEGACY_DEFAULT_ADMIN_PASSWORD = "admin123";
+    private static final String ADMIN_EMAIL = "admin@ctin.vn";
+    private static final String ADMIN_PASSWORD = "Admin@123";
 
     private final UnitRepository unitRepository;
     private final EmployeeRepository employeeRepository;
     private final MissionRepository missionRepository;
     private final JdbcTemplate jdbcTemplate;
     private final PasswordEncoder passwordEncoder;
-
-    @Value("${app.admin.email:admin@ctin.vn}")
-    private String adminEmail;
-
-    @Value("${app.admin.initial-password:}")
-    private String adminInitialPassword;
 
     @Override
     public void run(String... args) {
@@ -99,47 +92,37 @@ public class DataInitializer implements CommandLineRunner {
         }
     }
 
+    /**
+     * Syncs the admin password on every startup and logs the credentials, so the operator
+     * can always read the current admin login from the application log.
+     */
+    /**
+     * Admin account is hard-coded: created if missing, and its password is reset to
+     * ADMIN_PASSWORD on every startup.
+     */
     private void ensureAdminAccount(Unit btcUnit) {
-        Employee admin = employeeRepository.findByEmail(adminEmail).orElse(null);
+        Employee admin = employeeRepository.findByEmail(ADMIN_EMAIL).orElse(null);
 
         if (admin == null) {
-            String password = resolveAdminPassword();
             employeeRepository.save(Employee.builder()
                     .employeeCode("ADMIN001")
-                    .email(adminEmail)
+                    .email(ADMIN_EMAIL)
                     .fullName("Quản Trị Viên BTC")
-                    .password(passwordEncoder.encode(password))
+                    .password(passwordEncoder.encode(ADMIN_PASSWORD))
                     .role(Role.ROLE_ADMIN)
                     .approvalStatus(ApprovalStatus.ACCEPTED)
                     .isEmailVerified(true)
                     .unit(btcUnit)
                     .build());
-            log.info("✅ Created default admin account {}", adminEmail);
-            return;
-        }
-
-        // Rotate the well-known legacy default password
-        if (admin.getPassword() != null && passwordEncoder.matches(LEGACY_DEFAULT_ADMIN_PASSWORD, admin.getPassword())) {
-            String password = resolveAdminPassword();
-            admin.setPassword(passwordEncoder.encode(password));
+            log.info("✅ Created default admin account {}", ADMIN_EMAIL);
+        } else if (admin.getPassword() == null || !passwordEncoder.matches(ADMIN_PASSWORD, admin.getPassword())) {
+            admin.setPassword(passwordEncoder.encode(ADMIN_PASSWORD));
             employeeRepository.save(admin);
-            log.warn("🔐 Admin {} was still using the legacy default password; it has been replaced.", adminEmail);
+            log.info("🔐 Admin {} password reset to the hard-coded value.", ADMIN_EMAIL);
         }
-    }
 
-    /**
-     * Uses ADMIN_INITIAL_PASSWORD when provided. Otherwise generates a random one and
-     * prints it once so the operator can log in (then set ADMIN_INITIAL_PASSWORD).
-     */
-    private String resolveAdminPassword() {
-        if (adminInitialPassword != null && !adminInitialPassword.isBlank()) {
-            return adminInitialPassword;
-        }
-        String generated = PasswordGenerator.generate(16);
         log.warn("=================================================");
-        log.warn("ADMIN_INITIAL_PASSWORD chưa được cấu hình. Mật khẩu admin tạm thời cho {}: {}", adminEmail, generated);
-        log.warn("Hãy đặt biến ADMIN_INITIAL_PASSWORD hoặc lưu mật khẩu này lại — nó chỉ được in ra một lần.");
+        log.warn("ADMIN LOGIN | Email: {} | Mật khẩu: {}", ADMIN_EMAIL, ADMIN_PASSWORD);
         log.warn("=================================================");
-        return generated;
     }
 }

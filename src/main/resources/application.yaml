@@ -65,7 +65,7 @@ app:
     # Units that do not take part in the ranking (comma separated unit codes)
     excluded-unit-codes: ${LEADERBOARD_EXCLUDED_UNITS:PB_BTC}
   cors:
-    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174}
   submission:
     max-files-per-mission: 5
     max-file-size-mb: 10
