@@ -1,8 +1,12 @@
 package com.landing.page.service;
 
+import com.landing.page.dto.response.IndividualLeaderboardItemResponse;
 import com.landing.page.dto.response.LeaderboardItemResponse;
+import com.landing.page.dto.response.UnitParticipantResponse;
 import com.landing.page.entity.Employee;
 import com.landing.page.entity.Unit;
+import com.landing.page.entity.enums.Role;
+import com.landing.page.entity.enums.SubmissionStatus;
 import com.landing.page.repository.EmployeeRepository;
 import com.landing.page.repository.SubmissionRepository;
 import com.landing.page.repository.UnitRepository;
@@ -94,5 +98,81 @@ public class LeaderboardService {
             current.setRank(tied ? previous.getRank() : i + 1);
         }
         return leaderboard;
+    }
+
+    /**
+     * Players ranked by total score graded by the organizing committee (invalid submissions do not count).
+     * A null limit returns every ranked player.
+     */
+    @Transactional(readOnly = true)
+    public List<IndividualLeaderboardItemResponse> getIndividualLeaderboard(Integer limit) {
+        List<Object[]> rows = submissionRepository.sumScoresGroupedByEmployee(List.of(SubmissionStatus.INVALID));
+        Map<Long, Employee> employeesById = employeeRepository.findAllById(
+                        rows.stream().map(row -> (Long) row[0]).toList()).stream()
+                .collect(Collectors.toMap(Employee::getId, e -> e));
+
+        List<IndividualLeaderboardItemResponse> leaderboard = new ArrayList<>();
+        for (Object[] row : rows) {
+            Employee employee = employeesById.get((Long) row[0]);
+            double totalScore = row[1] != null ? ((Number) row[1]).doubleValue() : 0.0;
+            if (employee == null || employee.getRole() == Role.ROLE_ADMIN
+                    || excludedUnitCodes.contains(employee.getUnit().getCode()) || totalScore <= 0) {
+                continue;
+            }
+            leaderboard.add(IndividualLeaderboardItemResponse.builder()
+                    .employeeId(employee.getId())
+                    .fullName(employee.getFullName())
+                    .unitCode(employee.getUnit().getCode())
+                    .unitName(employee.getUnit().getName())
+                    .totalScore(Math.round(totalScore * 100.0) / 100.0)
+                    .lastUpdatedAt((LocalDateTime) row[2])
+                    .build());
+        }
+
+        // Highest score first; on a tie whoever reached it earlier ranks higher in the list
+        leaderboard.sort(Comparator
+                .comparing(IndividualLeaderboardItemResponse::getTotalScore).reversed()
+                .thenComparing(IndividualLeaderboardItemResponse::getLastUpdatedAt,
+                        Comparator.nullsLast(Comparator.naturalOrder())));
+
+        // Standard competition ranking: equal scores share a rank (1, 1, 3, ...)
+        for (int i = 0; i < leaderboard.size(); i++) {
+            IndividualLeaderboardItemResponse current = leaderboard.get(i);
+            IndividualLeaderboardItemResponse previous = i > 0 ? leaderboard.get(i - 1) : null;
+            boolean tied = previous != null && previous.getTotalScore().equals(current.getTotalScore());
+            current.setRank(tied ? previous.getRank() : i + 1);
+        }
+        if (limit != null && limit >= 0 && leaderboard.size() > limit) {
+            return new ArrayList<>(leaderboard.subList(0, limit));
+        }
+        return leaderboard;
+    }
+
+    /**
+     * Valid participants of one unit (same rule as the unit ranking), most valid submissions first.
+     */
+    @Transactional(readOnly = true)
+    public List<UnitParticipantResponse> getUnitParticipants(Long unitId) {
+        Unit unit = unitRepository.findById(unitId)
+                .orElseThrow(() -> new IllegalArgumentException("Unit not found with ID: " + unitId));
+        if (excludedUnitCodes.contains(unit.getCode())) {
+            return List.of();
+        }
+        long minRequired = employeeService.getMinRequiredMissions();
+        Map<Long, Long> validCountByEmployee = new HashMap<>();
+        for (Object[] row : submissionRepository.countSubmissionsGroupedByEmployee(EmployeeService.VALID_SUBMISSION_STATUSES)) {
+            validCountByEmployee.put((Long) row[0], (Long) row[1]);
+        }
+
+        return employeeRepository.findVerifiedEmployeesByUnitId(unitId).stream()
+                .filter(e -> validCountByEmployee.getOrDefault(e.getId(), 0L) >= minRequired)
+                .map(e -> UnitParticipantResponse.builder()
+                        .employeeId(e.getId())
+                        .fullName(e.getFullName())
+                        .validSubmissions(validCountByEmployee.get(e.getId()))
+                        .build())
+                .sorted(Comparator.comparing(UnitParticipantResponse::getValidSubmissions).reversed()
+                        .thenComparing(UnitParticipantResponse::getFullName))
+                .toList();
     }
 }

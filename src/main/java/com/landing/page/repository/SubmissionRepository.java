@@ -33,6 +33,11 @@ public interface SubmissionRepository extends JpaRepository<Submission, Long> {
     @Query("SELECT s.employee.id, COUNT(s) FROM Submission s WHERE s.status IN :statuses GROUP BY s.employee.id")
     List<Object[]> countSubmissionsGroupedByEmployee(@Param("statuses") List<SubmissionStatus> statuses);
 
+    /** Rows of [employeeId, sum(score), max(lastUpdatedAt)] for graded submissions not in the excluded statuses. */
+    @Query("SELECT s.employee.id, SUM(s.score), MAX(s.lastUpdatedAt) FROM Submission s " +
+            "WHERE s.score IS NOT NULL AND s.status NOT IN :excludedStatuses GROUP BY s.employee.id")
+    List<Object[]> sumScoresGroupedByEmployee(@Param("excludedStatuses") List<SubmissionStatus> excludedStatuses);
+
     /** Rows of [unitId, max(lastUpdatedAt)]. */
     @Query("SELECT s.employee.unit.id, MAX(s.lastUpdatedAt) FROM Submission s GROUP BY s.employee.unit.id")
     List<Object[]> findMaxLastUpdatedAtGroupedByUnit();
