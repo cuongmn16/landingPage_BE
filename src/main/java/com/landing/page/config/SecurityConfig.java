@@ -73,6 +73,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/submissions").hasRole(USER)
                         .requestMatchers(HttpMethod.GET, "/api/submissions/me").hasRole(USER)
                         .requestMatchers(HttpMethod.GET, "/api/employees/me/valid-status").hasRole(USER)
+                        // Bản nháp tiến trình chơi Mission của chính người chơi
+                        .requestMatchers("/api/missions/*/progress").hasRole(USER)
 
                         // Everything else under /api is admin-only (BTC)
                         .requestMatchers("/api/**").hasRole(ADMIN)

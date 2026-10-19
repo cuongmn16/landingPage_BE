@@ -23,4 +23,7 @@ public class UnitRequest {
     @NotNull(message = "Total personnel is required")
     @Min(value = 1, message = "Total personnel must be at least 1")
     private Integer totalPersonnel;
+
+    /** Thứ tự hiển thị (tùy chọn; bỏ trống khi thêm mới → xếp cuối). */
+    private Integer sortOrder;
 }

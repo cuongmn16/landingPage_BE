@@ -111,18 +111,18 @@ public class EmployeeService {
         return employeeRepository.save(employee);
     }
 
+    /**
+     * Phòng ban người dùng chọn khi đăng ký phải là một đơn vị có sẵn (do admin quản lý);
+     * không tự tạo đơn vị mới.
+     */
     private Unit resolveUnit(String rawUnit) {
-        String inputUnit = rawUnit != null && !rawUnit.isBlank() ? rawUnit.trim() : "PB_IT";
+        if (rawUnit == null || rawUnit.isBlank()) {
+            throw new IllegalArgumentException("Vui lòng chọn phòng ban.");
+        }
+        String inputUnit = rawUnit.trim();
         return unitRepository.findByCode(inputUnit)
                 .or(() -> unitRepository.findByName(inputUnit))
-                .orElseGet(() -> {
-                    String generatedCode = "PB_" + inputUnit.replaceAll("[^A-Za-z0-9]", "").toUpperCase();
-                    if (generatedCode.length() < 4) generatedCode = "PB_GENERIC";
-                    final String finalCode = generatedCode;
-                    return unitRepository.findByCode(finalCode).orElseGet(() ->
-                            unitRepository.save(Unit.builder().code(finalCode).name(inputUnit).totalPersonnel(10).build())
-                    );
-                });
+                .orElseThrow(() -> new IllegalArgumentException("Phòng ban không hợp lệ: " + inputUnit));
     }
 
     @Transactional
@@ -232,6 +232,6 @@ public class EmployeeService {
 
     @Transactional(readOnly = true)
     public List<Unit> getAllUnits() {
-        return unitRepository.findAll();
+        return unitRepository.findAllByOrderBySortOrderAscIdAsc();
     }
 }

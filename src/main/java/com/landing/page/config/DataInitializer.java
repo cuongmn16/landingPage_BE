@@ -44,21 +44,10 @@ public class DataInitializer implements CommandLineRunner {
 
         hashLegacyPlainTextPasswords();
 
-        // 1. Initialize Default Units
+        // 1. Đơn vị của BTC (admin). Danh sách 12 phòng ban CTIN được seed bằng Liquibase
+        //    (db/changelog/changes/004-seed-units-ctin.sql).
         Unit btcUnit = unitRepository.findByCode("PB_BTC")
-                .orElseGet(() -> unitRepository.save(Unit.builder().code("PB_BTC").name("Ban Tổ Chức (BTC)").totalPersonnel(5).build()));
-
-        unitRepository.findByCode("PB_IT")
-                .orElseGet(() -> unitRepository.save(Unit.builder().code("PB_IT").name("Phòng Kỹ thuật & CNTT").totalPersonnel(50).build()));
-
-        unitRepository.findByCode("PB_HR")
-                .orElseGet(() -> unitRepository.save(Unit.builder().code("PB_HR").name("Phòng Nhân sự").totalPersonnel(10).build()));
-
-        unitRepository.findByCode("PB_KD")
-                .orElseGet(() -> unitRepository.save(Unit.builder().code("PB_KD").name("Phòng Kinh doanh").totalPersonnel(30).build()));
-
-        unitRepository.findByCode("PB_KT")
-                .orElseGet(() -> unitRepository.save(Unit.builder().code("PB_KT").name("Phòng Tài chính Kế toán").totalPersonnel(15).build()));
+                .orElseGet(() -> unitRepository.save(Unit.builder().code("PB_BTC").name("Ban Tổ Chức (BTC)").totalPersonnel(5).sortOrder(0).build()));
 
         // 2. Default Admin Account
         ensureAdminAccount(btcUnit);

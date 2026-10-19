@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Liquibase master changelog.
+  Chạy tự động khi backend khởi động (spring.liquibase). Mỗi changeSet chỉ chạy 1 lần,
+  lịch sử lưu ở bảng DATABASECHANGELOG. Muốn đổi schema/dữ liệu: THÊM file mới, không sửa file đã chạy.
+-->
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <include file="db/changelog/changes/001-baseline-schema.sql"/>
+    <include file="db/changelog/changes/002-mission-progress.sql"/>
+    <include file="db/changelog/changes/003-units-sort-order.sql"/>
+    <include file="db/changelog/changes/004-seed-units-ctin.sql"/>
+
+</databaseChangeLog>

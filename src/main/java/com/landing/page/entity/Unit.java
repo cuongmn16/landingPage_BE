@@ -29,6 +29,10 @@ public class Unit {
     @Column(name = "total_personnel", nullable = false)
     private Integer totalPersonnel;
 
+    /** Thứ tự hiển thị (dropdown đăng ký, trang admin). */
+    @Column(name = "sort_order")
+    private Integer sortOrder;
+
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 
