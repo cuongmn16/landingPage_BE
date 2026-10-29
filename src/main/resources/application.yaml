@@ -71,6 +71,9 @@ app:
     excluded-unit-codes: ${LEADERBOARD_EXCLUDED_UNITS:PB_BTC}
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174}
+  mission3:
+    # Production phải đặt false: chặn nộp Mission 3 khi còn hồ sơ lãnh đạo chưa được BTC phê duyệt
+    allow-draft-content: ${M3_ALLOW_DRAFT_CONTENT:true}
   submission:
     max-files-per-mission: 5
     max-file-size-mb: 10

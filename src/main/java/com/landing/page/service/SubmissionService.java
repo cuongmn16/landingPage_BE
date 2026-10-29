@@ -40,6 +40,7 @@ public class SubmissionService {
     private final MissionRepository missionRepository;
     private final MinioService minioService;
     private final JwtTokenProvider jwtTokenProvider;
+    private final Mission3Grader mission3Grader;
 
     @Value("${app.submission.max-files-per-mission:5}")
     private int maxFilesPerMission;
@@ -78,9 +79,18 @@ public class SubmissionService {
             log.info("Creating new submission for employee: {} in mission: {}", employee.getEmployeeCode(), mission.getCode());
         }
 
+        String longTextAnswer = request.getLongTextAnswer();
+        String selectedOptionsJson = request.getSelectedOptionsJson();
+        if (Mission3Grader.MISSION_CODE.equalsIgnoreCase(mission.getCode())) {
+            // Mission 3: server tự xác nhận đáp án; bài không hợp lệ (V01–V06) bị từ chối
+            Mission3Grader.Result graded = mission3Grader.grade(selectedOptionsJson);
+            selectedOptionsJson = graded.answersJson();
+            longTextAnswer = (longTextAnswer == null ? "" : longTextAnswer + "\n\n") + graded.summaryLine();
+        }
+
         // Update latest content fields (MVP rule: save latest version)
-        submission.setLongTextAnswer(request.getLongTextAnswer());
-        submission.setSelectedOptionsJson(request.getSelectedOptionsJson());
+        submission.setLongTextAnswer(longTextAnswer);
+        submission.setSelectedOptionsJson(selectedOptionsJson);
         submission.setOrderedDataJson(request.getOrderedDataJson());
         submission.setEvidenceSource(request.getEvidenceSource());
         submission.setWitnessName(request.getWitnessName());

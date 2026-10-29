@@ -8,6 +8,7 @@ import com.landing.page.entity.Unit;
 import com.landing.page.entity.enums.Role;
 import com.landing.page.entity.enums.SubmissionStatus;
 import com.landing.page.repository.EmployeeRepository;
+import com.landing.page.repository.MissionRepository;
 import com.landing.page.repository.SubmissionRepository;
 import com.landing.page.repository.UnitRepository;
 import lombok.RequiredArgsConstructor;
@@ -31,14 +32,20 @@ public class LeaderboardService {
     private final UnitRepository unitRepository;
     private final EmployeeRepository employeeRepository;
     private final SubmissionRepository submissionRepository;
+    private final MissionRepository missionRepository;
     private final EmployeeService employeeService;
 
     @Value("${app.leaderboard.excluded-unit-codes:PB_BTC}")
     private Set<String> excludedUnitCodes;
 
+    /**
+     * Xếp hạng đơn vị theo tỷ lệ điểm: mỗi mission một thành viên nộp hợp lệ = 1 điểm cho đơn vị.
+     * Điểm tối đa = số nhân sự × số mission; tỷ lệ % = điểm đạt / điểm tối đa.
+     */
     @Transactional(readOnly = true)
     public List<LeaderboardItemResponse> getUnitLeaderboard() {
         long minRequired = employeeService.getMinRequiredMissions();
+        int totalMissions = (int) Math.max(1, missionRepository.count());
 
         // Bulk-load everything once instead of querying per employee
         Map<Long, Long> validCountByEmployee = new HashMap<>();
@@ -64,13 +71,24 @@ public class LeaderboardService {
                     .filter(e -> validCountByEmployee.getOrDefault(e.getId(), 0L) >= minRequired)
                     .count();
 
+            List<Employee> players = unitEmployees.stream()
+                    .filter(e -> e.getRole() != Role.ROLE_ADMIN)
+                    .filter(e -> Boolean.TRUE.equals(e.getIsEmailVerified()))
+                    .toList();
+            long earnedPoints = players.stream()
+                    .mapToLong(e -> Math.min(totalMissions, validCountByEmployee.getOrDefault(e.getId(), 0L)))
+                    .sum();
+
             int totalPersonnel = unit.getTotalPersonnel() != null && unit.getTotalPersonnel() > 0
                     ? unit.getTotalPersonnel()
                     : Math.max(1, unitEmployees.size());
+            // Không để tỷ lệ vượt 100% khi số người chơi thực tế nhiều hơn số nhân sự khai báo
+            long maxPoints = (long) Math.max(totalPersonnel, players.size()) * totalMissions;
 
             // Formula: Participation Rate % = (Valid Participants / Total Target Personnel) * 100%
             double participationRate = ((double) validParticipantsCount / totalPersonnel) * 100.0;
             double roundedRate = Math.round(participationRate * 100.0) / 100.0;
+            double scorePercent = Math.round(((double) earnedPoints / maxPoints) * 10000.0) / 100.0;
 
             leaderboard.add(LeaderboardItemResponse.builder()
                     .unitId(unit.getId())
@@ -79,22 +97,26 @@ public class LeaderboardService {
                     .totalPersonnel(totalPersonnel)
                     .validParticipantsCount(validParticipantsCount)
                     .participationRatePercent(roundedRate)
+                    .totalMissions(totalMissions)
+                    .earnedPoints(earnedPoints)
+                    .maxPoints(maxPoints)
+                    .scorePercent(scorePercent)
                     .lastUpdatedAt(lastUpdatedByUnit.getOrDefault(unit.getId(), unit.getUpdatedAt()))
                     .build());
         }
 
-        // Sort by participation rate desc, then valid participants desc
+        // Sort by score rate desc, then earned points desc
         leaderboard.sort(Comparator
-                .comparing(LeaderboardItemResponse::getParticipationRatePercent).reversed()
-                .thenComparing(Comparator.comparing(LeaderboardItemResponse::getValidParticipantsCount).reversed()));
+                .comparing(LeaderboardItemResponse::getScorePercent).reversed()
+                .thenComparing(Comparator.comparing(LeaderboardItemResponse::getEarnedPoints).reversed()));
 
-        // Standard competition ranking: units with the same rate and count share a rank (1, 1, 3, ...)
+        // Standard competition ranking: units with the same rate and points share a rank (1, 1, 3, ...)
         for (int i = 0; i < leaderboard.size(); i++) {
             LeaderboardItemResponse current = leaderboard.get(i);
             LeaderboardItemResponse previous = i > 0 ? leaderboard.get(i - 1) : null;
             boolean tied = previous != null
-                    && previous.getParticipationRatePercent().equals(current.getParticipationRatePercent())
-                    && previous.getValidParticipantsCount().equals(current.getValidParticipantsCount());
+                    && previous.getScorePercent().equals(current.getScorePercent())
+                    && previous.getEarnedPoints().equals(current.getEarnedPoints());
             current.setRank(tied ? previous.getRank() : i + 1);
         }
         return leaderboard;
