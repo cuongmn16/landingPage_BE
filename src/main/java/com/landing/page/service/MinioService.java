@@ -25,7 +25,7 @@ public class MinioService {
     @Value("${minio.bucket:mission-attachments}")
     private String bucketName;
 
-    @Value("${app.submission.max-file-size-mb:10}")
+    @Value("${app.submission.max-file-size-mb:50}")
     private long maxFileSizeMb;
 
     @Value("${app.submission.allowed-extensions:jpg,jpeg,png,pdf,docx}")
@@ -53,7 +53,7 @@ public class MinioService {
             throw new IllegalArgumentException("File cannot be empty");
         }
 
-        // Check file size (max 10MB)
+        // Check file size (max app.submission.max-file-size-mb)
         long maxSizeBytes = maxFileSizeMb * 1024 * 1024;
         if (file.getSize() > maxSizeBytes) {
             throw new IllegalArgumentException("File size exceeds limit of " + maxFileSizeMb + " MB per file");

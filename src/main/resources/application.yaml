@@ -38,8 +38,8 @@ spring:
   servlet:
     multipart:
       enabled: true
-      max-file-size: 10MB
-      max-request-size: 50MB
+      max-file-size: 50MB
+      max-request-size: 260MB
 
   # Secrets (mail password, JWT secret, ...) must come from environment variables / .env — never commit them here.
   mail:
@@ -76,7 +76,7 @@ app:
     allow-draft-content: ${M3_ALLOW_DRAFT_CONTENT:true}
   submission:
     max-files-per-mission: 5
-    max-file-size-mb: 10
+    max-file-size-mb: 50
     allowed-extensions: jpg,jpeg,png,pdf,docx
 
 jwt:

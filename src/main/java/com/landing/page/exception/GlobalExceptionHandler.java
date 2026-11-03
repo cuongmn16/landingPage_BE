@@ -53,7 +53,7 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleMaxUploadSizeExceededException(MaxUploadSizeExceededException ex) {
         log.warn("⚠️ [File Upload Error]: File size exceeds limit");
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(ApiResponse.error("Kích thước file vượt quá giới hạn tối đa cho phép (10MB)."));
+                .body(ApiResponse.error("Kích thước file vượt quá giới hạn tối đa cho phép (50MB/file)."));
     }
 
     /**
