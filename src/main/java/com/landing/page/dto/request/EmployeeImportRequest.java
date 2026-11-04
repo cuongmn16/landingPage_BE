@@ -13,18 +13,19 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class EmployeeImportRequest {
 
-    @NotBlank(message = "Employee code is required")
     private String employeeCode;
 
-    @NotBlank(message = "Email is required")
-    @Email(message = "Email must be valid")
+    @NotBlank(message = "Email không được để trống")
+    @Email(message = "Địa chỉ Email không hợp lệ")
     private String email;
 
-    @NotBlank(message = "Full name is required")
+    @NotBlank(message = "Họ và tên không được để trống")
     private String fullName;
 
-    @NotBlank(message = "Unit code is required")
+    @NotBlank(message = "Vui lòng chọn phòng ban")
     private String unitCode;
+
+    private String password;
 
     // Only used by admin import. Wrapper type: Jackson 3 rejects a missing value for primitives. null = true
     private Boolean emailVerified;

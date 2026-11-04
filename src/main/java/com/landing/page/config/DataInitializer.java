@@ -52,16 +52,22 @@ public class DataInitializer implements CommandLineRunner {
         // 2. Default Admin Account
         ensureAdminAccount(btcUnit);
 
-        // 3. Initialize Default Missions (4 Missions)
-        if (missionRepository.count() == 0) {
-            missionRepository.saveAll(List.of(
-                    Mission.builder().code("M1").title("Mission 1 – Journey Map").description("Tìm lại những dấu mốc trên hành trình phát triển CTIN.").isOpen(true).build(),
-                    Mission.builder().code("M2").title("Mission 2 – Legacy Stories").description("Khám phá những câu chuyện phía sau lịch sử chính thức.").isOpen(true).build(),
-                    Mission.builder().code("M3").title("Mission 3 – Leadership Legacies").description("Giải mã dấu ấn của các nhân vật tiêu biểu.").isOpen(true).build(),
-                    Mission.builder().code("M4").title("Mission 4 – CTIN DNA").description("Tìm ra những giá trị và hành vi làm nên DNA CTIN.").isOpen(true).build()
-            ));
-            log.info("[DataInitializer] Initialized 4 default Missions.");
+        // 3. Initialize / Sync 4 Default Missions
+        upsertMission("M1", "NHIỆM VỤ 01 – BẢN ĐỒ HÀNH TRÌNH", "Giải mã hành trình phát triển CTIN");
+        upsertMission("M2", "NHIỆM VỤ 02 – CÂU CHUYỆN PHÍA SAU LỊCH SỬ", "Kể lại những ký ức và câu chuyện của người CTIN");
+        upsertMission("M3", "NHIỆM VỤ 03 – DẤU ẤN NGƯỜI DẪN ĐƯỜNG", "Khám phá những quyết định, dấu ấn và phẩm chất lãnh đạo");
+        upsertMission("M4", "NHIỆM VỤ 04 – BẢN SẮC CTIN", "Từ những giá trị được gìn giữ đến Chương 26");
+    }
+
+    private void upsertMission(String code, String title, String description) {
+        Mission mission = missionRepository.findByCode(code)
+                .orElseGet(() -> Mission.builder().code(code).isOpen(true).build());
+        mission.setTitle(title);
+        mission.setDescription(description);
+        if (mission.getIsOpen() == null) {
+            mission.setIsOpen(true);
         }
+        missionRepository.save(mission);
     }
 
     /**
@@ -81,10 +87,6 @@ public class DataInitializer implements CommandLineRunner {
         }
     }
 
-    /**
-     * Syncs the admin password on every startup and logs the credentials, so the operator
-     * can always read the current admin login from the application log.
-     */
     /**
      * Admin account is hard-coded: created if missing, and its password is reset to
      * ADMIN_PASSWORD on every startup.

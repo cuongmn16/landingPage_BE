@@ -40,7 +40,7 @@ public class EmployeeController {
     @PostMapping("/register")
     public ResponseEntity<ApiResponse<Employee>> registerEmployee(@Valid @RequestBody EmployeeImportRequest request) {
         Employee employee = employeeService.registerUserRequest(request);
-        return ResponseEntity.ok(ApiResponse.ok("Đăng ký thành công, vui lòng chờ Ban Tổ Chức phê duyệt.", employee));
+        return ResponseEntity.ok(ApiResponse.ok("Đăng ký tài khoản thành công! Bạn có thể đăng nhập ngay.", employee));
     }
 
     @PostMapping("/import")

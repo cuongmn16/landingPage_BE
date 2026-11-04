@@ -49,24 +49,55 @@ public class EmployeeService {
     }
 
     /**
-     * Public self-registration: the email must have been verified by OTP beforehand.
+     * Public self-registration:
+     * - Email must end with @ctin.vn
+     * - User creates their own password
+     * - Email must be verified by OTP beforehand
+     * - Account is activated immediately (ApprovalStatus.ACCEPTED)
      */
     @Transactional
     public Employee registerUserRequest(EmployeeImportRequest request) {
-        // Validate & save first so that a business error does not burn the OTP verification;
-        // if the email is not verified the exception rolls the transaction back.
-        Employee saved = upsertPendingEmployee(request, true);
-        if (!otpService.consumeVerifiedEmail(request.getEmail())) {
+        String cleanEmail = request.getEmail() == null ? "" : request.getEmail().trim().toLowerCase();
+        if (!cleanEmail.endsWith("@ctin.vn")) {
+            throw new IllegalArgumentException("Email đăng ký bắt buộc phải có đuôi @ctin.vn.");
+        }
+        if (request.getPassword() == null || request.getPassword().trim().length() < 6) {
+            throw new IllegalArgumentException("Mật khẩu phải có ít nhất 6 ký tự.");
+        }
+
+        Unit unit = resolveUnit(request.getUnitCode());
+        String cleanEmpCode = resolveEmployeeCode(request.getEmployeeCode(), cleanEmail);
+
+        Employee employee = employeeRepository.findByEmail(cleanEmail).orElse(null);
+        Employee byCode = employeeRepository.findByEmployeeCode(cleanEmpCode).orElse(null);
+
+        if (byCode != null && (employee == null || !byCode.getId().equals(employee.getId()))) {
+            throw new IllegalArgumentException("Mã nhân viên " + cleanEmpCode + " đã được đăng ký với một email khác.");
+        }
+
+        if (employee != null && employee.getApprovalStatus() == ApprovalStatus.ACCEPTED && employee.getPassword() != null) {
+            throw new IllegalArgumentException("Email " + cleanEmail + " đã có tài khoản. Vui lòng dùng chức năng Đăng nhập hoặc Quên mật khẩu.");
+        }
+
+        if (!otpService.consumeVerifiedEmail(cleanEmail)) {
             throw new IllegalArgumentException("Email chưa được xác thực OTP hoặc phiên xác thực đã hết hạn. Vui lòng xác thực lại.");
         }
 
-        emailService.sendNotificationToAdmin(
-                saved.getFullName(),
-                saved.getEmail(),
-                saved.getEmployeeCode(),
-                saved.getUnit().getName()
-        );
-        return saved;
+        if (employee == null) {
+            employee = Employee.builder()
+                    .employeeCode(cleanEmpCode)
+                    .email(cleanEmail)
+                    .build();
+        }
+
+        employee.setEmployeeCode(cleanEmpCode);
+        employee.setFullName(request.getFullName().trim());
+        employee.setUnit(unit);
+        employee.setApprovalStatus(ApprovalStatus.ACCEPTED);
+        employee.setIsEmailVerified(true);
+        employee.setPassword(passwordEncoder.encode(request.getPassword().trim()));
+
+        return employeeRepository.save(employee);
     }
 
     /**
@@ -81,7 +112,7 @@ public class EmployeeService {
         Unit unit = resolveUnit(request.getUnitCode());
 
         String cleanEmail = request.getEmail().trim().toLowerCase();
-        String cleanEmpCode = request.getEmployeeCode().trim();
+        String cleanEmpCode = resolveEmployeeCode(request.getEmployeeCode(), cleanEmail);
 
         Employee employee = employeeRepository.findByEmail(cleanEmail).orElse(null);
         Employee byCode = employeeRepository.findByEmployeeCode(cleanEmpCode).orElse(null);
@@ -91,7 +122,7 @@ public class EmployeeService {
         }
 
         if (employee != null && employee.getApprovalStatus() == ApprovalStatus.ACCEPTED) {
-            throw new IllegalArgumentException("Email " + cleanEmail + " đã được Ban Tổ Chức phê duyệt (ACCEPTED) trước đó. Vui lòng dùng chức năng Đăng nhập hoặc Quên mật khẩu.");
+            throw new IllegalArgumentException("Email " + cleanEmail + " đã được kích hoạt trước đó. Vui lòng dùng chức năng Đăng nhập hoặc Quên mật khẩu.");
         }
 
         if (employee == null) {
@@ -106,9 +137,30 @@ public class EmployeeService {
         employee.setUnit(unit);
         employee.setApprovalStatus(ApprovalStatus.PENDING);
         employee.setIsEmailVerified(emailVerified);
-        employee.setPassword(null); // No password is created until Admin accepts
+        if (request.getPassword() != null && !request.getPassword().isBlank()) {
+            employee.setPassword(passwordEncoder.encode(request.getPassword().trim()));
+            employee.setApprovalStatus(ApprovalStatus.ACCEPTED);
+        } else {
+            employee.setPassword(null);
+        }
 
         return employeeRepository.save(employee);
+    }
+
+    private String resolveEmployeeCode(String rawCode, String cleanEmail) {
+        if (rawCode != null && !rawCode.isBlank()) {
+            return rawCode.trim();
+        }
+        String prefix = cleanEmail.split("@")[0].toUpperCase().replaceAll("[^A-Z0-9]", "");
+        if (prefix.isEmpty()) {
+            prefix = "USER";
+        }
+        String candidate = "CTIN_" + prefix;
+        Employee existing = employeeRepository.findByEmployeeCode(candidate).orElse(null);
+        if (existing != null && !existing.getEmail().equalsIgnoreCase(cleanEmail)) {
+            candidate = candidate + "_" + (System.currentTimeMillis() % 10000);
+        }
+        return candidate;
     }
 
     /**
@@ -133,20 +185,21 @@ public class EmployeeService {
         employee.setApprovalStatus(ApprovalStatus.ACCEPTED);
         employee.setIsEmailVerified(true);
 
-        String rawPassword = PasswordGenerator.generate();
-        employee.setPassword(passwordEncoder.encode(rawPassword));
+        if (employee.getPassword() == null || employee.getPassword().isBlank()) {
+            String rawPassword = PasswordGenerator.generate();
+            employee.setPassword(passwordEncoder.encode(rawPassword));
+            Employee approved = employeeRepository.save(employee);
+            emailService.sendAccountCredentialsEmail(
+                    approved.getEmail(),
+                    approved.getFullName(),
+                    approved.getEmployeeCode(),
+                    rawPassword,
+                    approved.getUnit().getName()
+            );
+            return approved;
+        }
 
-        Employee approved = employeeRepository.save(employee);
-
-        emailService.sendAccountCredentialsEmail(
-                approved.getEmail(),
-                approved.getFullName(),
-                approved.getEmployeeCode(),
-                rawPassword,
-                approved.getUnit().getName()
-        );
-
-        return approved;
+        return employeeRepository.save(employee);
     }
 
     @Transactional

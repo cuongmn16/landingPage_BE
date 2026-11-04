@@ -38,8 +38,12 @@ public class AuthController {
         if (email == null || email.isBlank()) {
             throw new IllegalArgumentException("Địa chỉ email không được để trống.");
         }
-        otpService.generateAndSendOtp(email);
-        return ResponseEntity.ok(ApiResponse.ok("Mã OTP 6 số đã được gửi tới email " + email + ". Vui lòng kiểm tra hộp thư!", email));
+        String cleanEmail = email.trim().toLowerCase();
+        if (!cleanEmail.endsWith("@ctin.vn")) {
+            throw new IllegalArgumentException("Email đăng ký bắt buộc phải có đuôi @ctin.vn.");
+        }
+        otpService.generateAndSendOtp(cleanEmail);
+        return ResponseEntity.ok(ApiResponse.ok("Mã OTP 6 số đã được gửi tới email " + cleanEmail + ". Vui lòng kiểm tra hộp thư!", cleanEmail));
     }
 
     @PostMapping("/verify-otp")
@@ -56,13 +60,19 @@ public class AuthController {
                 .or(() -> employeeRepository.findByEmployeeCode(input))
                 .orElseThrow(() -> new IllegalArgumentException(BAD_CREDENTIALS));
 
-        if (employee.getApprovalStatus() != ApprovalStatus.ACCEPTED) {
-            throw new IllegalArgumentException("Tài khoản của bạn đang ở trạng thái Chờ Ban Tổ Chức phê duyệt. Vui lòng quay lại sau khi nhận được email kích hoạt mật khẩu.");
+        if (employee.getApprovalStatus() == ApprovalStatus.REJECTED) {
+            throw new IllegalArgumentException("Tài khoản của bạn đã bị từ chối truy cập. Vui lòng liên hệ Ban Tổ Chức.");
         }
 
         String dbPassword = employee.getPassword();
         if (dbPassword == null || !passwordEncoder.matches(request.getPassword(), dbPassword)) {
             throw new IllegalArgumentException(BAD_CREDENTIALS);
+        }
+
+        if (employee.getApprovalStatus() != ApprovalStatus.ACCEPTED) {
+            employee.setApprovalStatus(ApprovalStatus.ACCEPTED);
+            employee.setIsEmailVerified(true);
+            employee = employeeRepository.save(employee);
         }
 
         return ResponseEntity.ok(ApiResponse.ok("Đăng nhập thành công", buildAuthResponse(employee)));
@@ -102,7 +112,7 @@ public class AuthController {
 
         Employee employee = employeeRepository.findByEmail(cleanEmail)
                 .filter(e -> e.getApprovalStatus() == ApprovalStatus.ACCEPTED)
-                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy tài khoản đã được phê duyệt với email: " + cleanEmail));
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy tài khoản với email: " + cleanEmail));
 
         String rawPassword = PasswordGenerator.generate();
         employee.setPassword(passwordEncoder.encode(rawPassword));
