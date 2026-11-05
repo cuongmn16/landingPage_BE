@@ -24,6 +24,8 @@ public class DataInitializer implements CommandLineRunner {
 
     private static final String ADMIN_EMAIL = "admin@ctin.vn";
     private static final String ADMIN_PASSWORD = "Admin@123";
+    private static final String DEMO_USER_EMAIL = "user@ctin.vn";
+    private static final String DEMO_USER_PASSWORD = "User@123";
 
     private final UnitRepository unitRepository;
     private final EmployeeRepository employeeRepository;
@@ -49,8 +51,9 @@ public class DataInitializer implements CommandLineRunner {
         Unit btcUnit = unitRepository.findByCode("PB_BTC")
                 .orElseGet(() -> unitRepository.save(Unit.builder().code("PB_BTC").name("Ban Tổ Chức (BTC)").totalPersonnel(5).sortOrder(0).build()));
 
-        // 2. Default Admin Account
+        // 2. Default Admin & Demo Player Accounts
         ensureAdminAccount(btcUnit);
+        ensureDemoPlayerAccount(btcUnit);
 
         // 3. Initialize / Sync 4 Default Missions
         upsertMission("M1", "NHIỆM VỤ 01 – BẢN ĐỒ HÀNH TRÌNH", "Giải mã hành trình phát triển CTIN");
@@ -114,6 +117,40 @@ public class DataInitializer implements CommandLineRunner {
 
         log.warn("=================================================");
         log.warn("ADMIN LOGIN | Email: {} | Mật khẩu: {}", ADMIN_EMAIL, ADMIN_PASSWORD);
+        log.warn("=================================================");
+    }
+
+    /**
+     * Demo player account for testing gameplay without requiring an OTP email on @ctin.vn.
+     */
+    private void ensureDemoPlayerAccount(Unit fallbackUnit) {
+        Unit playerUnit = unitRepository.findAll().stream()
+                .filter(u -> !"PB_BTC".equals(u.getCode()))
+                .findFirst()
+                .orElse(fallbackUnit);
+
+        Employee demoUser = employeeRepository.findByEmail(DEMO_USER_EMAIL).orElse(null);
+        if (demoUser == null) {
+            employeeRepository.save(Employee.builder()
+                    .employeeCode("USER001")
+                    .email(DEMO_USER_EMAIL)
+                    .fullName("Người Chơi Thử Nghiệm")
+                    .password(passwordEncoder.encode(DEMO_USER_PASSWORD))
+                    .role(Role.ROLE_USER)
+                    .approvalStatus(ApprovalStatus.ACCEPTED)
+                    .isEmailVerified(true)
+                    .unit(playerUnit)
+                    .build());
+            log.info("✅ Created default demo player account {}", DEMO_USER_EMAIL);
+        } else {
+            demoUser.setPassword(passwordEncoder.encode(DEMO_USER_PASSWORD));
+            demoUser.setIsEmailVerified(true);
+            demoUser.setApprovalStatus(ApprovalStatus.ACCEPTED);
+            employeeRepository.save(demoUser);
+        }
+
+        log.warn("=================================================");
+        log.warn("DEMO USER LOGIN | Email: {} | Mật khẩu: {}", DEMO_USER_EMAIL, DEMO_USER_PASSWORD);
         log.warn("=================================================");
     }
 }
