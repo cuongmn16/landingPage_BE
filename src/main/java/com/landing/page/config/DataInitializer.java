@@ -61,7 +61,7 @@ public class DataInitializer implements CommandLineRunner {
         upsertMission("M3", "NHIỆM VỤ 03 – DẤU ẤN NGƯỜI DẪN ĐƯỜNG", "Khám phá những quyết định, dấu ấn và phẩm chất lãnh đạo");
         upsertMission("M4", "NHIỆM VỤ 04 – BẢN SẮC CTIN", "Từ những giá trị được gìn giữ đến Chương 26");
 
-        // 4. Auto-approve existing submissions for Mission 1, 3, 4 (Phương án A)
+        // 4. Auto-approve existing submissions for Mission 1, 3, 4 (Phương án A - safe deploy sync)
         syncAutoApprovedMissions();
     }
 
