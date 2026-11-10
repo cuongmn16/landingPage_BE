@@ -2,11 +2,14 @@ package com.landing.page.config;
 
 import com.landing.page.entity.Employee;
 import com.landing.page.entity.Mission;
+import com.landing.page.entity.Submission;
 import com.landing.page.entity.Unit;
 import com.landing.page.entity.enums.ApprovalStatus;
 import com.landing.page.entity.enums.Role;
+import com.landing.page.entity.enums.SubmissionStatus;
 import com.landing.page.repository.EmployeeRepository;
 import com.landing.page.repository.MissionRepository;
+import com.landing.page.repository.SubmissionRepository;
 import com.landing.page.repository.UnitRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -30,6 +33,7 @@ public class DataInitializer implements CommandLineRunner {
     private final UnitRepository unitRepository;
     private final EmployeeRepository employeeRepository;
     private final MissionRepository missionRepository;
+    private final SubmissionRepository submissionRepository;
     private final JdbcTemplate jdbcTemplate;
     private final PasswordEncoder passwordEncoder;
 
@@ -60,6 +64,26 @@ public class DataInitializer implements CommandLineRunner {
         upsertMission("M2", "NHIỆM VỤ 02 – CÂU CHUYỆN PHÍA SAU LỊCH SỬ", "Kể lại những ký ức và câu chuyện của người CTIN");
         upsertMission("M3", "NHIỆM VỤ 03 – DẤU ẤN NGƯỜI DẪN ĐƯỜNG", "Khám phá những quyết định, dấu ấn và phẩm chất lãnh đạo");
         upsertMission("M4", "NHIỆM VỤ 04 – BẢN SẮC CTIN", "Từ những giá trị được gìn giữ đến Chương 26");
+
+        // 4. Auto-approve existing submissions for Mission 1, 3, 4 (Phương án A)
+        syncAutoApprovedMissions();
+    }
+
+    private void syncAutoApprovedMissions() {
+        List<Submission> toUpdate = submissionRepository.findAll().stream()
+                .filter(s -> !"M2".equalsIgnoreCase(s.getMission().getCode()))
+                .filter(s -> s.getStatus() == SubmissionStatus.SUBMITTED || s.getScore() == null)
+                .toList();
+        for (Submission s : toUpdate) {
+            s.setStatus(SubmissionStatus.VALID);
+            if (s.getScore() == null) {
+                s.setScore(1.0);
+            }
+        }
+        if (!toUpdate.isEmpty()) {
+            submissionRepository.saveAll(toUpdate);
+            log.info("✅ [DataInitializer] Auto-approved {} existing submission(s) for Mission 1, 3, 4.", toUpdate.size());
+        }
     }
 
     private void upsertMission(String code, String title, String description) {

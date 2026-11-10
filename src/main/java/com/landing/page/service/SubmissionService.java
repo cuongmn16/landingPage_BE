@@ -60,6 +60,8 @@ public class SubmissionService {
                 .findByEmployeeIdAndMissionId(employee.getId(), mission.getId())
                 .orElse(null);
 
+        boolean isManualGraded = "M2".equalsIgnoreCase(mission.getCode());
+
         if (submission != null) {
             // Edit allowed while mission is open, or when BTC re-opened this submission
             if (!missionOpen && submission.getStatus() != SubmissionStatus.REOPENED) {
@@ -74,7 +76,8 @@ public class SubmissionService {
                     .employee(employee)
                     .mission(mission)
                     .submissionTime(LocalDateTime.now())
-                    .status(SubmissionStatus.SUBMITTED)
+                    .status(isManualGraded ? SubmissionStatus.SUBMITTED : SubmissionStatus.VALID)
+                    .score(isManualGraded ? null : 1.0)
                     .build();
             log.info("Creating new submission for employee: {} in mission: {}", employee.getEmployeeCode(), mission.getCode());
         }
@@ -95,8 +98,15 @@ public class SubmissionService {
         submission.setEvidenceSource(request.getEvidenceSource());
         submission.setWitnessName(request.getWitnessName());
         submission.setLastUpdatedAt(LocalDateTime.now());
-        if (submission.getStatus() == SubmissionStatus.REOPENED) {
-            submission.setStatus(SubmissionStatus.SUBMITTED); // Reset to SUBMITTED after edit
+        if (isManualGraded) {
+            if (submission.getStatus() == SubmissionStatus.REOPENED) {
+                submission.setStatus(SubmissionStatus.SUBMITTED); // Reset to SUBMITTED after edit
+                submission.setScore(null);
+            }
+        } else {
+            // Mission 1, 3, 4: Tự động ghi nhận hợp lệ và gán 1 điểm hoàn thành
+            submission.setStatus(SubmissionStatus.VALID);
+            submission.setScore(1.0);
         }
 
         List<MultipartFile> validFiles = files == null ? List.of() : files.stream()
