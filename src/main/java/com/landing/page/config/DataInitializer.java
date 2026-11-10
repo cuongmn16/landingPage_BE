@@ -67,13 +67,23 @@ public class DataInitializer implements CommandLineRunner {
 
     private void syncAutoApprovedMissions() {
         try {
-            int updated = jdbcTemplate.update(
+            // 1. Chỉ tự động duyệt các bài nộp đang chờ (SUBMITTED / PENDING) của Mission 1, 3, 4
+            int approved = jdbcTemplate.update(
                 "UPDATE submissions SET status = 'VALID', score = 1.0 " +
                 "WHERE mission_id IN (SELECT id FROM missions WHERE UPPER(code) != 'M2') " +
-                "AND (status = 'SUBMITTED' OR score IS NULL)"
+                "AND status IN ('SUBMITTED', 'PENDING')"
             );
-            if (updated > 0) {
-                log.info("✅ [DataInitializer] Auto-approved {} existing submission(s) for Mission 1, 3, 4.", updated);
+
+            // 2. Điền điểm 1.0 cho các bài đã VALID mà chưa có điểm (tuyệt đối giữ nguyên INVALID, REOPENED, NEEDS_SUPPLEMENT)
+            int scoreBackfilled = jdbcTemplate.update(
+                "UPDATE submissions SET score = 1.0 " +
+                "WHERE mission_id IN (SELECT id FROM missions WHERE UPPER(code) != 'M2') " +
+                "AND status = 'VALID' AND score IS NULL"
+            );
+
+            if (approved > 0 || scoreBackfilled > 0) {
+                log.info("✅ [DataInitializer] Mission 1, 3, 4 sync: approved {} pending submission(s), backfilled score for {} valid submission(s).",
+                        approved, scoreBackfilled);
             }
         } catch (Exception e) {
             log.warn("⚠️ [DataInitializer] Could not sync auto-approved submissions: {}", e.getMessage());
