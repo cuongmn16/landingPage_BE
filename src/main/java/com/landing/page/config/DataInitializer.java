@@ -2,14 +2,11 @@ package com.landing.page.config;
 
 import com.landing.page.entity.Employee;
 import com.landing.page.entity.Mission;
-import com.landing.page.entity.Submission;
 import com.landing.page.entity.Unit;
 import com.landing.page.entity.enums.ApprovalStatus;
 import com.landing.page.entity.enums.Role;
-import com.landing.page.entity.enums.SubmissionStatus;
 import com.landing.page.repository.EmployeeRepository;
 import com.landing.page.repository.MissionRepository;
-import com.landing.page.repository.SubmissionRepository;
 import com.landing.page.repository.UnitRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -33,7 +30,6 @@ public class DataInitializer implements CommandLineRunner {
     private final UnitRepository unitRepository;
     private final EmployeeRepository employeeRepository;
     private final MissionRepository missionRepository;
-    private final SubmissionRepository submissionRepository;
     private final JdbcTemplate jdbcTemplate;
     private final PasswordEncoder passwordEncoder;
 
@@ -70,19 +66,17 @@ public class DataInitializer implements CommandLineRunner {
     }
 
     private void syncAutoApprovedMissions() {
-        List<Submission> toUpdate = submissionRepository.findAll().stream()
-                .filter(s -> !"M2".equalsIgnoreCase(s.getMission().getCode()))
-                .filter(s -> s.getStatus() == SubmissionStatus.SUBMITTED || s.getScore() == null)
-                .toList();
-        for (Submission s : toUpdate) {
-            s.setStatus(SubmissionStatus.VALID);
-            if (s.getScore() == null) {
-                s.setScore(1.0);
+        try {
+            int updated = jdbcTemplate.update(
+                "UPDATE submissions SET status = 'VALID', score = 1.0 " +
+                "WHERE mission_id IN (SELECT id FROM missions WHERE UPPER(code) != 'M2') " +
+                "AND (status = 'SUBMITTED' OR score IS NULL)"
+            );
+            if (updated > 0) {
+                log.info("✅ [DataInitializer] Auto-approved {} existing submission(s) for Mission 1, 3, 4.", updated);
             }
-        }
-        if (!toUpdate.isEmpty()) {
-            submissionRepository.saveAll(toUpdate);
-            log.info("✅ [DataInitializer] Auto-approved {} existing submission(s) for Mission 1, 3, 4.", toUpdate.size());
+        } catch (Exception e) {
+            log.warn("⚠️ [DataInitializer] Could not sync auto-approved submissions: {}", e.getMessage());
         }
     }
 
