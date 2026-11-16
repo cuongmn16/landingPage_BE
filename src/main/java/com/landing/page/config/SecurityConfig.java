@@ -65,6 +65,10 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/employees/units").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/rule-config/**").permitAll()
 
+                        // Public: Live Wishing Wall (Bức tường lời chúc sự kiện 25 năm CTIN)
+                        .requestMatchers(HttpMethod.GET, "/api/wishes/live").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/wishes").permitAll()
+
                         // File download is authorized by a signed, short-lived token in the URL
                         .requestMatchers(HttpMethod.GET, "/api/submissions/files/download").permitAll()
 

@@ -3,14 +3,17 @@ package com.landing.page.security;
 import com.landing.page.config.SecurityConfig;
 import com.landing.page.controller.AuthController;
 import com.landing.page.controller.EmployeeController;
+import com.landing.page.controller.EventWishController;
 import com.landing.page.controller.LeaderboardController;
 import com.landing.page.controller.MissionController;
 import com.landing.page.controller.SubmissionController;
+import com.landing.page.dto.response.LiveWishesWallResponse;
 import com.landing.page.entity.Employee;
 import com.landing.page.entity.enums.Role;
 import com.landing.page.repository.EmployeeRepository;
 import com.landing.page.service.EmailService;
 import com.landing.page.service.EmployeeService;
+import com.landing.page.service.EventWishService;
 import com.landing.page.service.LeaderboardService;
 import com.landing.page.service.MinioService;
 import com.landing.page.service.MissionService;
@@ -38,7 +41,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         MissionController.class,
         SubmissionController.class,
         LeaderboardController.class,
-        AuthController.class
+        AuthController.class,
+        EventWishController.class
 })
 @Import({SecurityConfig.class, JwtTokenProvider.class, JwtAuthenticationFilter.class})
 @TestPropertySource(properties = {
@@ -62,6 +66,7 @@ class SecurityConfigTest {
     @MockitoBean private OtpService otpService;
     @MockitoBean private EmailService emailService;
     @MockitoBean private EmployeeRepository employeeRepository;
+    @MockitoBean private EventWishService eventWishService;
 
     private String accessToken(Role role) {
         Employee e = Employee.builder().id(1L).email("u@ctin.vn").employeeCode("CT1").role(role).build();
@@ -72,9 +77,11 @@ class SecurityConfigTest {
     void publicEndpointsAreOpen() throws Exception {
         when(missionService.getAllMissions()).thenReturn(List.of());
         when(leaderboardService.getUnitLeaderboard()).thenReturn(List.of());
+        when(eventWishService.getLiveWishes()).thenReturn(new LiveWishesWallResponse(0, List.of()));
 
         mvc.perform(get("/api/missions")).andExpect(status().isOk());
         mvc.perform(get("/api/leaderboard/units")).andExpect(status().isOk());
+        mvc.perform(get("/api/wishes/live")).andExpect(status().isOk());
     }
 
     @Test
@@ -83,6 +90,8 @@ class SecurityConfigTest {
         mvc.perform(put("/api/employees/1/approve")).andExpect(status().isUnauthorized());
         mvc.perform(get("/api/submissions/all")).andExpect(status().isUnauthorized());
         mvc.perform(put("/api/missions/1/toggle").param("isOpen", "false")).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/wishes/all")).andExpect(status().isUnauthorized());
+        mvc.perform(put("/api/wishes/1/hide")).andExpect(status().isUnauthorized());
     }
 
     @Test

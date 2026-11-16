@@ -14,5 +14,6 @@
     <include file="db/changelog/changes/002-mission-progress.sql"/>
     <include file="db/changelog/changes/003-units-sort-order.sql"/>
     <include file="db/changelog/changes/004-seed-units-ctin.sql"/>
+    <include file="db/changelog/changes/005-event-wishes.sql"/>
 
 </databaseChangeLog>

@@ -37,9 +37,20 @@ public class DataInitializer implements CommandLineRunner {
     public void run(String... args) {
         log.info("[DataInitializer] Initializing system default data & Admin account...");
 
-        // Ensure approval_status column exists in PostgreSQL database table
+        // Ensure approval_status column and event_wishes table exist in PostgreSQL database
         try {
             jdbcTemplate.execute("ALTER TABLE employees ADD COLUMN IF NOT EXISTS approval_status VARCHAR(20) DEFAULT 'PENDING';");
+            jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS event_wishes (
+                    id          BIGSERIAL PRIMARY KEY,
+                    sender_name VARCHAR(100) NOT NULL,
+                    unit_name   VARCHAR(150) NOT NULL,
+                    content     VARCHAR(500) NOT NULL,
+                    is_hidden   BOOLEAN      NOT NULL DEFAULT FALSE,
+                    created_at  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );
+                """);
+            jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_event_wishes_live ON event_wishes (is_hidden, created_at DESC);");
         } catch (Exception e) {
             log.warn("⚠️ Could not run schema migration: {}", e.getMessage());
         }
