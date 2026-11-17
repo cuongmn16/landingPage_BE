@@ -26,4 +26,7 @@ public interface EmployeeRepository extends JpaRepository<Employee, Long> {
 
     @Query("SELECT e FROM Employee e WHERE e.unit.id = :unitId AND e.isEmailVerified = true")
     List<Employee> findVerifiedEmployeesByUnitId(@Param("unitId") Long unitId);
+
+    @Query("SELECT e FROM Employee e LEFT JOIN FETCH e.unit ORDER BY e.id ASC")
+    List<Employee> findAllWithUnit();
 }

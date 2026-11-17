@@ -1,6 +1,7 @@
 package com.landing.page.service;
 
 import com.landing.page.dto.request.EmployeeImportRequest;
+import com.landing.page.dto.request.EmployeeUpdateRequest;
 import com.landing.page.dto.request.UnitRequest;
 import com.landing.page.dto.response.ValidParticipantResponse;
 import com.landing.page.entity.Employee;
@@ -278,9 +279,30 @@ public class EmployeeService {
         return employeeRepository.findByUnitId(unitId);
     }
 
+    @Transactional
+    public Employee updateEmployeeByAdmin(Long id, EmployeeUpdateRequest request) {
+        Employee employee = employeeRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy nhân sự với ID: " + id));
+
+        if (request.getFullName() != null && !request.getFullName().trim().isBlank()) {
+            employee.setFullName(request.getFullName().trim());
+        }
+
+        if (request.getUnitCode() != null && !request.getUnitCode().trim().isBlank()) {
+            Unit unit = resolveUnit(request.getUnitCode().trim());
+            employee.setUnit(unit);
+        }
+
+        Employee saved = employeeRepository.save(employee);
+        if (saved.getUnit() != null) {
+            saved.getUnit().getName();
+        }
+        return saved;
+    }
+
     @Transactional(readOnly = true)
     public List<Employee> getAllEmployees() {
-        return employeeRepository.findAll();
+        return employeeRepository.findAllWithUnit();
     }
 
     @Transactional(readOnly = true)

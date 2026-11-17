@@ -1,6 +1,7 @@
 package com.landing.page.controller;
 
 import com.landing.page.dto.request.EmployeeImportRequest;
+import com.landing.page.dto.request.EmployeeUpdateRequest;
 import com.landing.page.dto.request.UnitRequest;
 import com.landing.page.dto.response.ApiResponse;
 import com.landing.page.dto.response.ValidParticipantResponse;
@@ -47,6 +48,14 @@ public class EmployeeController {
     public ResponseEntity<ApiResponse<Employee>> importEmployee(@Valid @RequestBody EmployeeImportRequest request) {
         Employee employee = employeeService.importEmployee(request);
         return ResponseEntity.ok(ApiResponse.ok("Employee imported/updated successfully", employee));
+    }
+
+    @PutMapping("/{id}")
+    public ResponseEntity<ApiResponse<Employee>> updateEmployee(
+            @PathVariable("id") Long id,
+            @Valid @RequestBody EmployeeUpdateRequest request) {
+        Employee employee = employeeService.updateEmployeeByAdmin(id, request);
+        return ResponseEntity.ok(ApiResponse.ok("Cập nhật thông tin nhân sự thành công!", employee));
     }
 
     @PutMapping("/{id}/approve")
