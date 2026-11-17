@@ -104,6 +104,11 @@ public class EventWishService {
         eventWishRepository.deleteById(id);
     }
 
+    @Transactional
+    public void resetAllWishes() {
+        eventWishRepository.deleteAll();
+    }
+
     private String sanitize(String input) {
         if (input == null) return "";
         return input.trim().replaceAll("\\s+", " ");

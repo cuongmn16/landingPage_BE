@@ -62,4 +62,13 @@ public class EventWishController {
         eventWishService.deleteWish(id);
         return ResponseEntity.ok(ApiResponse.ok("Đã xóa lời chúc", null));
     }
+
+    /**
+     * Admin (BTC): Reset toàn bộ bức tường lời chúc (Xóa tất cả lời chúc để bắt đầu sự kiện)
+     */
+    @DeleteMapping("/reset")
+    public ResponseEntity<ApiResponse<Void>> resetAllWishes() {
+        eventWishService.resetAllWishes();
+        return ResponseEntity.ok(ApiResponse.ok("Đã reset toàn bộ bức tường lời chúc", null));
+    }
 }
