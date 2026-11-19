@@ -15,5 +15,6 @@
     <include file="db/changelog/changes/003-units-sort-order.sql"/>
     <include file="db/changelog/changes/004-seed-units-ctin.sql"/>
     <include file="db/changelog/changes/005-event-wishes.sql"/>
+    <include file="db/changelog/changes/006-gratitude-letters.sql"/>
 
 </databaseChangeLog>
