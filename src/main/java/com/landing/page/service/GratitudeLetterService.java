@@ -161,8 +161,8 @@ public class GratitudeLetterService {
                     .unitName(unitName)
                     .daysOfService(isBtcAdmin ? 9130 : 4859)
                     .yearsDesc(isBtcAdmin
-                            ? "Hơn 25 năm đầy nhiệt huyết & gắn bó cùng đại gia đình CTIN"
-                            : "Hơn 13 năm 3 tháng đầy nhiệt huyết & gắn bó cùng đại gia đình CTIN")
+                            ? "25 năm đầy nhiệt huyết & gắn bó cùng đại gia đình CTIN"
+                            : "13 năm 3 tháng đầy nhiệt huyết & gắn bó cùng đại gia đình CTIN")
                     .isOpened(false)
                     .build();
         }
@@ -283,10 +283,28 @@ public class GratitudeLetterService {
                 .salutation(salutation)
                 .unitName(letter.getUnitName())
                 .daysOfService(letter.getDaysOfService())
-                .yearsDesc(letter.getYearsDesc())
+                .yearsDesc(formatYearsDesc(letter.getYearsDesc()))
                 .isOpened(letter.getIsOpened())
                 .openedAt(letter.getOpenedAt())
                 .isPublished(systemPublished || individualPublished)
                 .build();
+    }
+
+    /**
+     * Chuẩn hóa chuỗi mô tả thời gian cống hiến:
+     * 1. Bỏ từ "Hơn " ở đầu câu (ví dụ "Hơn 25 năm..." -> "25 năm...").
+     * 2. Quy đổi các trường hợp "... năm 12 tháng ..." thành tròn thêm 1 năm (ví dụ "24 năm 12 tháng" -> "25 năm").
+     */
+    public static String formatYearsDesc(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return raw;
+        }
+        String res = raw.replaceAll("^(?i)Hơn\\s+", "").trim();
+        java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("(\\d+)\\s*năm\\s*12\\s*tháng", java.util.regex.Pattern.CASE_INSENSITIVE).matcher(res);
+        if (matcher.find()) {
+            int years = Integer.parseInt(matcher.group(1)) + 1;
+            res = matcher.replaceFirst(years + " năm");
+        }
+        return res;
     }
 }

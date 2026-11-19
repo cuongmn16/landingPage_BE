@@ -280,4 +280,19 @@ class GratitudeLetterServiceMappingTest {
         assertThat(resp.getSalutation()).isEqualTo("Anh");
         assertThat(resp.getIsPublished()).isTrue(); // Admin luôn xem được
     }
+
+    @Test
+    @DisplayName("10. Kiểm tra formatYearsDesc: Bỏ từ 'Hơn' và quy đổi 'X năm 12 tháng' thành (X+1) năm")
+    void testFormatYearsDesc() {
+        assertThat(GratitudeLetterService.formatYearsDesc("Hơn 24 năm 12 tháng đầy nhiệt huyết & gắn bó cùng đại gia đình CTIN"))
+                .isEqualTo("25 năm đầy nhiệt huyết & gắn bó cùng đại gia đình CTIN");
+        assertThat(GratitudeLetterService.formatYearsDesc("Hơn 28 năm 12 tháng đầy nhiệt huyết & gắn bó cùng đại gia đình CTIN"))
+                .isEqualTo("29 năm đầy nhiệt huyết & gắn bó cùng đại gia đình CTIN");
+        assertThat(GratitudeLetterService.formatYearsDesc("Hơn 25 năm 4 tháng đầy nhiệt huyết & gắn bó cùng đại gia đình CTIN"))
+                .isEqualTo("25 năm 4 tháng đầy nhiệt huyết & gắn bó cùng đại gia đình CTIN");
+        assertThat(GratitudeLetterService.formatYearsDesc("Hơn 3 tháng khởi đầu đầy nhiệt huyết cùng đại gia đình CTIN"))
+                .isEqualTo("3 tháng khởi đầu đầy nhiệt huyết cùng đại gia đình CTIN");
+        assertThat(GratitudeLetterService.formatYearsDesc("18 ngày khởi đầu đầy nhiệt huyết cùng đại gia đình CTIN"))
+                .isEqualTo("18 ngày khởi đầu đầy nhiệt huyết cùng đại gia đình CTIN");
+    }
 }
