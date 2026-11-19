@@ -74,6 +74,7 @@ public class SecurityConfig {
 
                         // Logged-in participants (admin accounts cannot submit)
                         .requestMatchers("/api/auth/logout").authenticated()
+                        .requestMatchers("/api/gratitude-letters/admin/**").hasRole(ADMIN)
                         .requestMatchers("/api/gratitude-letters/**").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/submissions").hasRole(USER)
                         .requestMatchers(HttpMethod.GET, "/api/submissions/me").hasRole(USER)
