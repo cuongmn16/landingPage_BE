@@ -157,7 +157,7 @@ public class GratitudeLetterService {
                     .email(cleanEmail)
                     .employeeCode(employee != null ? employee.getEmployeeCode() : (isBtcAdmin ? "ADMIN001" : "C30050"))
                     .fullName(fullName)
-                    .salutation(isBtcAdmin ? "Ông" : "Anh")
+                    .salutation("Anh")
                     .unitName(unitName)
                     .daysOfService(isBtcAdmin ? 9130 : 4859)
                     .yearsDesc(isBtcAdmin
@@ -262,12 +262,25 @@ public class GratitudeLetterService {
     private GratitudeLetterResponse toResponse(GratitudeLetter letter) {
         boolean systemPublished = isPublished();
         boolean individualPublished = Boolean.TRUE.equals(letter.getIsPublished());
+
+        // Quy đổi danh xưng thân thiện, trẻ trung: Ông -> Anh, Bà -> Chị
+        String rawSalutation = letter.getSalutation();
+        String salutation = "Anh";
+        if (rawSalutation != null) {
+            String clean = rawSalutation.trim();
+            if ("Bà".equalsIgnoreCase(clean) || "Chị".equalsIgnoreCase(clean)) {
+                salutation = "Chị";
+            } else {
+                salutation = "Anh";
+            }
+        }
+
         return GratitudeLetterResponse.builder()
                 .id(letter.getId())
                 .email(letter.getEmail())
                 .employeeCode(letter.getEmployeeCode())
                 .fullName(letter.getFullName())
-                .salutation(letter.getSalutation() != null ? letter.getSalutation() : "Anh/Chị")
+                .salutation(salutation)
                 .unitName(letter.getUnitName())
                 .daysOfService(letter.getDaysOfService())
                 .yearsDesc(letter.getYearsDesc())

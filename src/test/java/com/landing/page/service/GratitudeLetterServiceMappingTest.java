@@ -109,7 +109,7 @@ class GratitudeLetterServiceMappingTest {
     }
 
     @Test
-    @DisplayName("1. Khớp chính xác email công ty: lanmh@ctin.vn -> Bà Mai Hương Lan")
+    @DisplayName("1. Khớp chính xác email công ty: lanmh@ctin.vn -> Chị Mai Hương Lan")
     void testExactEmailMatch() {
         authenticateAs("lanmh@ctin.vn", "ROLE_USER");
         when(employeeRepository.findByEmailIgnoreCase("lanmh@ctin.vn")).thenReturn(Optional.empty());
@@ -119,13 +119,13 @@ class GratitudeLetterServiceMappingTest {
 
         assertThat(resp).isNotNull();
         assertThat(resp.getFullName()).isEqualTo("Mai Hương Lan");
-        assertThat(resp.getSalutation()).isEqualTo("Bà");
+        assertThat(resp.getSalutation()).isEqualTo("Chị");
         assertThat(resp.getDaysOfService()).isEqualTo(9120);
         assertThat(resp.getEmployeeCode()).isEqualTo("C30004");
     }
 
     @Test
-    @DisplayName("2. Khớp email không phân biệt hoa thường: LANMH@CTIN.VN -> Bà Mai Hương Lan")
+    @DisplayName("2. Khớp email không phân biệt hoa thường: LANMH@CTIN.VN -> Chị Mai Hương Lan")
     void testCaseInsensitiveEmailMatch() {
         authenticateAs("LANMH@CTIN.VN", "ROLE_USER");
         when(employeeRepository.findByEmailIgnoreCase("LANMH@CTIN.VN")).thenReturn(Optional.empty());
@@ -135,11 +135,11 @@ class GratitudeLetterServiceMappingTest {
 
         assertThat(resp).isNotNull();
         assertThat(resp.getFullName()).isEqualTo("Mai Hương Lan");
-        assertThat(resp.getSalutation()).isEqualTo("Bà");
+        assertThat(resp.getSalutation()).isEqualTo("Chị");
     }
 
     @Test
-    @DisplayName("3. Khớp email cá nhân gmail: lanmh@gmail.com -> Tự tách prefix thành lanmh@ctin.vn")
+    @DisplayName("3. Khớp email cá nhân gmail: lanmh@gmail.com -> Tự tách prefix thành lanmh@ctin.vn -> Chị")
     void testPersonalEmailDomainFallback() {
         authenticateAs("lanmh@gmail.com", "ROLE_USER");
         when(employeeRepository.findByEmailIgnoreCase("lanmh@gmail.com")).thenReturn(Optional.empty());
@@ -150,12 +150,12 @@ class GratitudeLetterServiceMappingTest {
 
         assertThat(resp).isNotNull();
         assertThat(resp.getFullName()).isEqualTo("Mai Hương Lan");
-        assertThat(resp.getSalutation()).isEqualTo("Bà");
+        assertThat(resp.getSalutation()).isEqualTo("Chị");
         assertThat(resp.getDaysOfService()).isEqualTo(9120);
     }
 
     @Test
-    @DisplayName("4. Khớp username không có đuôi domain: lanmh -> Tự ghép @ctin.vn")
+    @DisplayName("4. Khớp username không có đuôi domain: lanmh -> Tự ghép @ctin.vn -> Chị")
     void testUsernameWithoutDomain() {
         authenticateAs("lanmh", "ROLE_USER");
         when(employeeRepository.findByEmailIgnoreCase("lanmh")).thenReturn(Optional.empty());
@@ -166,11 +166,11 @@ class GratitudeLetterServiceMappingTest {
 
         assertThat(resp).isNotNull();
         assertThat(resp.getFullName()).isEqualTo("Mai Hương Lan");
-        assertThat(resp.getSalutation()).isEqualTo("Bà");
+        assertThat(resp.getSalutation()).isEqualTo("Chị");
     }
 
     @Test
-    @DisplayName("5. Khớp khi đăng nhập bằng chuỗi Mã NV: C30004")
+    @DisplayName("5. Khớp khi đăng nhập bằng chuỗi Mã NV: C30004 -> Chị Mai Hương Lan")
     void testLoginWithEmployeeCode() {
         authenticateAs("C30004", "ROLE_USER");
         when(employeeRepository.findByEmailIgnoreCase("C30004")).thenReturn(Optional.empty());
@@ -182,7 +182,7 @@ class GratitudeLetterServiceMappingTest {
 
         assertThat(resp).isNotNull();
         assertThat(resp.getFullName()).isEqualTo("Mai Hương Lan");
-        assertThat(resp.getSalutation()).isEqualTo("Bà");
+        assertThat(resp.getSalutation()).isEqualTo("Chị");
     }
 
     @Test
@@ -235,24 +235,24 @@ class GratitudeLetterServiceMappingTest {
     }
 
     @Test
-    @DisplayName("8. Kiểm tra đúng 4 danh xưng chuẩn: Bà, Ông, Anh, Chị")
+    @DisplayName("8. Kiểm tra quy đổi danh xưng trẻ trung: Bà -> Chị, Ông -> Anh, Anh -> Anh, Chị -> Chị")
     void testAllFourSalutations() {
-        // Bà
+        // Bà -> Chị
         authenticateAs("lanmh@ctin.vn", "ROLE_USER");
         when(letterRepository.findByEmailIgnoreCase("lanmh@ctin.vn")).thenReturn(Optional.of(sampleLetterLan));
-        assertThat(service.getMyLetter().getSalutation()).isEqualTo("Bà");
+        assertThat(service.getMyLetter().getSalutation()).isEqualTo("Chị");
 
-        // Ông
+        // Ông -> Anh
         authenticateAs("nangpn@ctin.vn", "ROLE_USER");
         when(letterRepository.findByEmailIgnoreCase("nangpn@ctin.vn")).thenReturn(Optional.of(sampleLetterNang));
-        assertThat(service.getMyLetter().getSalutation()).isEqualTo("Ông");
+        assertThat(service.getMyLetter().getSalutation()).isEqualTo("Anh");
 
-        // Anh
+        // Anh -> Anh
         authenticateAs("taihd@ctin.vn", "ROLE_USER");
         when(letterRepository.findByEmailIgnoreCase("taihd@ctin.vn")).thenReturn(Optional.of(sampleLetterTai));
         assertThat(service.getMyLetter().getSalutation()).isEqualTo("Anh");
 
-        // Chị
+        // Chị -> Chị
         authenticateAs("anhlp@ctin.vn", "ROLE_USER");
         when(letterRepository.findByEmailIgnoreCase("anhlp@ctin.vn")).thenReturn(Optional.of(sampleLetterAnh));
         assertThat(service.getMyLetter().getSalutation()).isEqualTo("Chị");
@@ -277,7 +277,7 @@ class GratitudeLetterServiceMappingTest {
 
         assertThat(resp).isNotNull();
         assertThat(resp.getFullName()).isEqualTo("Admin Ban Tổ Chức");
-        assertThat(resp.getSalutation()).isEqualTo("Ông");
+        assertThat(resp.getSalutation()).isEqualTo("Anh");
         assertThat(resp.getIsPublished()).isTrue(); // Admin luôn xem được
     }
 }

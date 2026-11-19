@@ -211,8 +211,8 @@ public class DataInitializer implements CommandLineRunner {
 
         log.warn("=================================================");
         log.warn("DEMO SALUTATION ACCOUNTS (Mật khẩu: Demo@123):");
-        log.warn("1. [BÀ]  lanmh@ctin.vn  | Mai Hương Lan   (C30004)");
-        log.warn("2. [ÔNG] nangpn@ctin.vn | Phạm Ngọc Năng  (C30007)");
+        log.warn("1. [CHỊ] lanmh@ctin.vn | Mai Hương Lan   (C30004)");
+        log.warn("2. [ANH] nangpn@ctin.vn | Phạm Ngọc Năng  (C30007)");
         log.warn("3. [ANH] taihd@ctin.vn  | Huỳnh Đỗ Tài    (C30026)");
         log.warn("4. [CHỊ] anhlp@ctin.vn  | Lê Phương Anh   (C30045)");
         log.warn("=================================================");
