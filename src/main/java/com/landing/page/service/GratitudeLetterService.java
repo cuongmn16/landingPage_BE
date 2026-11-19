@@ -115,16 +115,24 @@ public class GratitudeLetterService {
         boolean isAdmin = employee != null && employee.getRole() != null && "ADMIN".equalsIgnoreCase(employee.getRole().name());
         boolean published = isPublished();
 
-        // 1. Khớp ưu tiên số 1: Khớp chính xác theo Email
-        GratitudeLetter letter = letterRepository.findByEmailIgnoreCase(email).orElse(null);
+        String cleanEmail = (email != null) ? email.trim() : "";
 
-        // 2. Khớp ưu tiên số 2: Nếu chưa thấy theo email, thử khớp theo Mã NV của nhân sự
-        if (letter == null && employee != null && employee.getEmployeeCode() != null) {
-            letter = letterRepository.findByEmployeeCodeIgnoreCase(employee.getEmployeeCode()).orElse(null);
+        // 1. Khớp ưu tiên số 1: Khớp chính xác theo Email
+        GratitudeLetter letter = letterRepository.findByEmailIgnoreCase(cleanEmail).orElse(null);
+
+        // 2. Khớp ưu tiên số 2: Nếu email đăng ký khác domain (VD: lanmh@gmail.com), thử khớp theo username @ctin.vn (lanmh@ctin.vn)
+        if (letter == null && cleanEmail.contains("@")) {
+            String prefix = cleanEmail.substring(0, cleanEmail.indexOf("@")).trim();
+            letter = letterRepository.findByEmailIgnoreCase(prefix + "@ctin.vn").orElse(null);
         }
 
-        // 3. Khớp ưu tiên số 3: Nếu vẫn chưa thấy, thử khớp theo Họ và tên
-        if (letter == null && employee != null && employee.getFullName() != null) {
+        // 3. Khớp ưu tiên số 3: Nếu chưa thấy theo email, thử khớp theo Mã NV của nhân sự
+        if (letter == null && employee != null && employee.getEmployeeCode() != null && !employee.getEmployeeCode().isBlank()) {
+            letter = letterRepository.findByEmployeeCodeIgnoreCase(employee.getEmployeeCode().trim()).orElse(null);
+        }
+
+        // 4. Khớp ưu tiên số 4: Nếu vẫn chưa thấy, thử khớp theo Họ và tên
+        if (letter == null && employee != null && employee.getFullName() != null && !employee.getFullName().isBlank()) {
             letter = letterRepository.findFirstByFullNameIgnoreCase(employee.getFullName().trim()).orElse(null);
         }
 
@@ -170,11 +178,19 @@ public class GratitudeLetterService {
         String email = SecurityUtils.currentEmail().orElse(null);
         if (email == null) return;
 
-        GratitudeLetter letter = letterRepository.findByEmailIgnoreCase(email).orElse(null);
+        String cleanEmail = email.trim();
+        GratitudeLetter letter = letterRepository.findByEmailIgnoreCase(cleanEmail).orElse(null);
+        if (letter == null && cleanEmail.contains("@")) {
+            String prefix = cleanEmail.substring(0, cleanEmail.indexOf("@")).trim();
+            letter = letterRepository.findByEmailIgnoreCase(prefix + "@ctin.vn").orElse(null);
+        }
         if (letter == null) {
-            Employee employee = employeeRepository.findByEmail(email).orElse(null);
-            if (employee != null && employee.getEmployeeCode() != null) {
-                letter = letterRepository.findByEmployeeCodeIgnoreCase(employee.getEmployeeCode()).orElse(null);
+            Employee employee = employeeRepository.findByEmail(cleanEmail).orElse(null);
+            if (employee != null && employee.getEmployeeCode() != null && !employee.getEmployeeCode().isBlank()) {
+                letter = letterRepository.findByEmployeeCodeIgnoreCase(employee.getEmployeeCode().trim()).orElse(null);
+            }
+            if (letter == null && employee != null && employee.getFullName() != null && !employee.getFullName().isBlank()) {
+                letter = letterRepository.findFirstByFullNameIgnoreCase(employee.getFullName().trim()).orElse(null);
             }
         }
 
