@@ -16,6 +16,5 @@
     <include file="db/changelog/changes/004-seed-units-ctin.sql"/>
     <include file="db/changelog/changes/005-event-wishes.sql"/>
     <include file="db/changelog/changes/006-gratitude-letters.sql"/>
-    <include file="db/changelog/changes/007-seed-demo-accounts.sql"/>
 
 </databaseChangeLog>
