@@ -44,6 +44,10 @@ public class GratitudeLetter {
     @Builder.Default
     private Boolean isOpened = false;
 
+    @Column(name = "is_published")
+    @Builder.Default
+    private Boolean isPublished = false;
+
     @Column(name = "opened_at")
     private LocalDateTime openedAt;
 

@@ -106,6 +106,16 @@ public class GratitudeLetterService {
         return toResponse(letter);
     }
 
+    @Transactional
+    public GratitudeLetterResponse setIndividualPublished(Long id, boolean published) {
+        GratitudeLetter letter = letterRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy thư tri ân với ID: " + id));
+        letter.setIsPublished(published);
+        letterRepository.save(letter);
+        log.info("Admin updated individual publish status for letter ID {} ({}): {}", id, letter.getFullName(), published);
+        return toResponse(letter);
+    }
+
     @Transactional(readOnly = true)
     public GratitudeLetterResponse getMyLetter() {
         String email = SecurityUtils.currentEmail()
@@ -169,7 +179,8 @@ public class GratitudeLetterService {
                     .build();
         }
 
-        resp.setIsPublished(published || isAdmin);
+        boolean isIndividualPublished = (letter != null && Boolean.TRUE.equals(letter.getIsPublished()));
+        resp.setIsPublished(published || isAdmin || isIndividualPublished);
         return resp;
     }
 
@@ -203,6 +214,8 @@ public class GratitudeLetterService {
     }
 
     private GratitudeLetterResponse toResponse(GratitudeLetter letter) {
+        boolean systemPublished = isPublished();
+        boolean individualPublished = Boolean.TRUE.equals(letter.getIsPublished());
         return GratitudeLetterResponse.builder()
                 .id(letter.getId())
                 .email(letter.getEmail())
@@ -214,7 +227,7 @@ public class GratitudeLetterService {
                 .yearsDesc(letter.getYearsDesc())
                 .isOpened(letter.getIsOpened())
                 .openedAt(letter.getOpenedAt())
-                .isPublished(isPublished())
+                .isPublished(systemPublished || individualPublished)
                 .build();
     }
 }

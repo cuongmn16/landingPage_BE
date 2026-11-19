@@ -41,6 +41,18 @@ public class GratitudeLetterController {
         return ResponseEntity.ok(ApiResponse.ok("Xem trước thư tri ân nhân sự", gratitudeLetterService.getLetterForAdminPreview(id)));
     }
 
+    @PostMapping("/admin/{id}/publish")
+    public ResponseEntity<ApiResponse<GratitudeLetterResponse>> setIndividualPublished(
+            @PathVariable("id") Long id,
+            @RequestParam("published") boolean published
+    ) {
+        GratitudeLetterResponse result = gratitudeLetterService.setIndividualPublished(id, published);
+        String msg = published
+                ? "Đã phát hành riêng Thư Tri Ân cho nhân sự " + result.getFullName() + "!"
+                : "Đã tạm khóa Thư Tri Ân của nhân sự " + result.getFullName() + ".";
+        return ResponseEntity.ok(ApiResponse.ok(msg, result));
+    }
+
     @PostMapping("/admin/publish")
     public ResponseEntity<ApiResponse<Boolean>> setPublished(@RequestParam("published") boolean published) {
         boolean result = gratitudeLetterService.setPublished(published);
