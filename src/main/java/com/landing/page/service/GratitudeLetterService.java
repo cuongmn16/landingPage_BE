@@ -24,7 +24,7 @@ import java.util.List;
 public class GratitudeLetterService {
 
     public static final String KEY_GRATITUDE_LETTERS_PUBLISHED = "GRATITUDE_LETTERS_PUBLISHED";
-    public static final String KEY_GRATITUDE_LETTERS_MODE = "GRATITUDE_LETTERS_MODE"; // AUTO_20H | MANUAL_PUBLISHED | MANUAL_LOCKED
+    public static final String KEY_GRATITUDE_LETTERS_MODE = "GRATITUDE_LETTERS_MODE"; // AUTO_22H30 | MANUAL_PUBLISHED | MANUAL_LOCKED
 
     private final GratitudeLetterRepository letterRepository;
     private final EmployeeRepository employeeRepository;
@@ -34,17 +34,17 @@ public class GratitudeLetterService {
     public String getPublishMode() {
         return ruleConfigRepository.findByConfigKey(KEY_GRATITUDE_LETTERS_MODE)
                 .map(SystemRuleConfig::getConfigValue)
-                .orElse("AUTO_20H"); // Mặc định: Tự động lúc 20:00
+                .orElse("AUTO_22H30"); // Mặc định: Tự động lúc 22:30 ngày 20/11
     }
 
     @Transactional
     public String setPublishMode(String mode) {
-        String cleanMode = (mode != null && !mode.isBlank()) ? mode.trim().toUpperCase() : "AUTO_20H";
+        String cleanMode = (mode != null && !mode.isBlank()) ? mode.trim().toUpperCase() : "AUTO_22H30";
         SystemRuleConfig config = ruleConfigRepository.findByConfigKey(KEY_GRATITUDE_LETTERS_MODE)
                 .orElseGet(() -> SystemRuleConfig.builder()
                         .configKey(KEY_GRATITUDE_LETTERS_MODE)
                         .ruleType(RuleType.MIN_COMPLETED_MISSIONS)
-                        .description("Che do phat hanh Thu Tri An (AUTO_20H | MANUAL_PUBLISHED | MANUAL_LOCKED)")
+                        .description("Che do phat hanh Thu Tri An (AUTO_22H30 | MANUAL_PUBLISHED | MANUAL_LOCKED)")
                         .build());
 
         config.setConfigValue(cleanMode);
@@ -62,11 +62,11 @@ public class GratitudeLetterService {
         if ("MANUAL_LOCKED".equalsIgnoreCase(mode)) {
             return false;
         }
-        // Chế độ AUTO_20H: Tự động phát hành từ 20:00 ngày 20/11/2026 trở đi (Múi giờ Asia/Ho_Chi_Minh)
+        // Chế độ AUTO_22H30 (hoặc legacy AUTO_20H): Tự động phát hành từ 22:30 ngày 20/11/2026 trở đi (Múi giờ Asia/Ho_Chi_Minh)
         try {
             java.time.ZoneId vnZone = java.time.ZoneId.of("Asia/Ho_Chi_Minh");
             java.time.LocalDateTime now = java.time.LocalDateTime.now(vnZone);
-            java.time.LocalDateTime releaseTarget = java.time.LocalDateTime.of(2026, 11, 20, 20, 0, 0);
+            java.time.LocalDateTime releaseTarget = java.time.LocalDateTime.of(2026, 11, 20, 22, 30, 0);
             return !now.isBefore(releaseTarget);
         } catch (Exception e) {
             return false;

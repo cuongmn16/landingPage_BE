@@ -62,8 +62,8 @@ public class GratitudeLetterController {
     @PostMapping("/admin/publish-mode")
     public ResponseEntity<ApiResponse<String>> setPublishMode(@RequestParam("mode") String mode) {
         String result = gratitudeLetterService.setPublishMode(mode);
-        String msg = "AUTO_20H".equalsIgnoreCase(result)
-                ? "Đã kích hoạt chế độ tự động phát hành lúc 20:00!"
+        String msg = (result != null && result.startsWith("AUTO"))
+                ? "Đã kích hoạt chế độ tự động phát hành lúc 22:30 ngày 20/11!"
                 : ("MANUAL_PUBLISHED".equalsIgnoreCase(result)
                     ? "Đã phát hành Thư Tri Ân chủ động ngay lập tức!"
                     : "Đã tạm khóa niêm phong Thư Tri Ân.");
