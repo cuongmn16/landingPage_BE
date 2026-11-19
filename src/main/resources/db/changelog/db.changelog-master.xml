@@ -18,5 +18,6 @@
     <include file="db/changelog/changes/006-gratitude-letters.sql"/>
     <include file="db/changelog/changes/007-gratitude-letters-published.sql"/>
     <include file="db/changelog/changes/008-update-salutations-anh-chi.sql"/>
+    <include file="db/changelog/changes/009-cleanup-demo-accounts.sql"/>
 
 </databaseChangeLog>

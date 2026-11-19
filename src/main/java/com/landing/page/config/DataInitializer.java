@@ -66,7 +66,6 @@ public class DataInitializer implements CommandLineRunner {
         // 2. Default Admin & Demo Player Accounts
         ensureAdminAccount(btcUnit);
         ensureDemoPlayerAccount(btcUnit);
-        ensureDemoSalutationAccounts(btcUnit);
 
         // 3. Initialize / Sync 4 Default Missions
         upsertMission("M1", "NHIỆM VỤ 01 – BẢN ĐỒ HÀNH TRÌNH", "Giải mã hành trình phát triển CTIN");
@@ -193,55 +192,5 @@ public class DataInitializer implements CommandLineRunner {
         log.warn("=================================================");
         log.warn("DEMO USER LOGIN | Email: {} | Mật khẩu: {}", DEMO_USER_EMAIL, DEMO_USER_PASSWORD);
         log.warn("=================================================");
-    }
-
-    /**
-     * 4 Demo Accounts representing 4 Salutations: Bà, Ông, Anh, Chị
-     */
-    private void ensureDemoSalutationAccounts(Unit defaultUnit) {
-        Unit unit = unitRepository.findAll().stream()
-                .filter(u -> !"PB_BTC".equals(u.getCode()))
-                .findFirst()
-                .orElse(defaultUnit);
-
-        createOrUpdateDemoUser("lanmh@ctin.vn", "C30004", "Mai Hương Lan", "Demo@123", unit);
-        createOrUpdateDemoUser("nangpn@ctin.vn", "C30007", "Phạm Ngọc Năng", "Demo@123", unit);
-        createOrUpdateDemoUser("taihd@ctin.vn", "C30026", "Huỳnh Đỗ Tài", "Demo@123", unit);
-        createOrUpdateDemoUser("anhlp@ctin.vn", "C30045", "Lê Phương Anh", "Demo@123", unit);
-
-        log.warn("=================================================");
-        log.warn("DEMO SALUTATION ACCOUNTS (Mật khẩu: Demo@123):");
-        log.warn("1. [CHỊ] lanmh@ctin.vn | Mai Hương Lan   (C30004)");
-        log.warn("2. [ANH] nangpn@ctin.vn | Phạm Ngọc Năng  (C30007)");
-        log.warn("3. [ANH] taihd@ctin.vn  | Huỳnh Đỗ Tài    (C30026)");
-        log.warn("4. [CHỊ] anhlp@ctin.vn  | Lê Phương Anh   (C30045)");
-        log.warn("=================================================");
-    }
-
-    private void createOrUpdateDemoUser(String email, String code, String name, String password, Unit defaultUnit) {
-        try {
-            Employee emp = employeeRepository.findByEmail(email).orElse(null);
-            if (emp == null) {
-                emp = Employee.builder()
-                        .email(email)
-                        .employeeCode(code)
-                        .fullName(name)
-                        .password(passwordEncoder.encode(password))
-                        .role(Role.ROLE_USER)
-                        .approvalStatus(ApprovalStatus.ACCEPTED)
-                        .isEmailVerified(true)
-                        .unit(defaultUnit)
-                        .build();
-                employeeRepository.save(emp);
-                log.info("✅ Created demo salutation account: {} ({})", name, email);
-            } else {
-                emp.setPassword(passwordEncoder.encode(password));
-                emp.setIsEmailVerified(true);
-                emp.setApprovalStatus(ApprovalStatus.ACCEPTED);
-                employeeRepository.save(emp);
-            }
-        } catch (Exception e) {
-            log.warn("⚠️ Could not ensure demo user {}: {}", email, e.getMessage());
-        }
     }
 }
