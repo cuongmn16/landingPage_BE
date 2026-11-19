@@ -121,37 +121,21 @@ public class GratitudeLetterService {
         String email = SecurityUtils.currentEmail()
                 .orElseThrow(() -> new IllegalArgumentException("Vui lòng đăng nhập để xem thư tri ân."));
 
-        Employee employee = employeeRepository.findByEmail(email).orElse(null);
+        String cleanEmail = (email != null) ? email.trim() : "";
+        Employee employee = employeeRepository.findByEmailIgnoreCase(cleanEmail)
+                .orElseGet(() -> employeeRepository.findByEmail(cleanEmail).orElse(null));
+
         boolean isAdmin = employee != null && employee.getRole() != null && "ADMIN".equalsIgnoreCase(employee.getRole().name());
         boolean published = isPublished();
 
-        String cleanEmail = (email != null) ? email.trim() : "";
-
-        // 1. Khớp ưu tiên số 1: Khớp chính xác theo Email
-        GratitudeLetter letter = letterRepository.findByEmailIgnoreCase(cleanEmail).orElse(null);
-
-        // 2. Khớp ưu tiên số 2: Nếu email đăng ký khác domain (VD: lanmh@gmail.com), thử khớp theo username @ctin.vn (lanmh@ctin.vn)
-        if (letter == null && cleanEmail.contains("@")) {
-            String prefix = cleanEmail.substring(0, cleanEmail.indexOf("@")).trim();
-            letter = letterRepository.findByEmailIgnoreCase(prefix + "@ctin.vn").orElse(null);
-        }
-
-        // 3. Khớp ưu tiên số 3: Nếu chưa thấy theo email, thử khớp theo Mã NV của nhân sự
-        if (letter == null && employee != null && employee.getEmployeeCode() != null && !employee.getEmployeeCode().isBlank()) {
-            letter = letterRepository.findByEmployeeCodeIgnoreCase(employee.getEmployeeCode().trim()).orElse(null);
-        }
-
-        // 4. Khớp ưu tiên số 4: Nếu vẫn chưa thấy, thử khớp theo Họ và tên
-        if (letter == null && employee != null && employee.getFullName() != null && !employee.getFullName().isBlank()) {
-            letter = letterRepository.findFirstByFullNameIgnoreCase(employee.getFullName().trim()).orElse(null);
-        }
+        GratitudeLetter letter = findMatchingLetter(cleanEmail, employee);
 
         GratitudeLetterResponse resp;
         if (letter != null) {
             resp = toResponse(letter);
         } else {
             // Fallback an toàn cho tài khoản test / admin chưa có trong danh sách
-            boolean isBtcAdmin = isAdmin || (email != null && email.toLowerCase().contains("admin"));
+            boolean isBtcAdmin = isAdmin || cleanEmail.toLowerCase().contains("admin");
             String fullName = (employee != null && employee.getFullName() != null)
                     ? employee.getFullName()
                     : (isBtcAdmin ? "Quản Trị Viên BTC" : "Trần Tuấn Anh");
@@ -166,7 +150,7 @@ public class GratitudeLetterService {
             }
 
             resp = GratitudeLetterResponse.builder()
-                    .email(email)
+                    .email(cleanEmail)
                     .employeeCode(employee != null ? employee.getEmployeeCode() : (isBtcAdmin ? "ADMIN001" : "C30050"))
                     .fullName(fullName)
                     .salutation(isBtcAdmin ? "Ông" : "Anh")
@@ -190,20 +174,10 @@ public class GratitudeLetterService {
         if (email == null) return;
 
         String cleanEmail = email.trim();
-        GratitudeLetter letter = letterRepository.findByEmailIgnoreCase(cleanEmail).orElse(null);
-        if (letter == null && cleanEmail.contains("@")) {
-            String prefix = cleanEmail.substring(0, cleanEmail.indexOf("@")).trim();
-            letter = letterRepository.findByEmailIgnoreCase(prefix + "@ctin.vn").orElse(null);
-        }
-        if (letter == null) {
-            Employee employee = employeeRepository.findByEmail(cleanEmail).orElse(null);
-            if (employee != null && employee.getEmployeeCode() != null && !employee.getEmployeeCode().isBlank()) {
-                letter = letterRepository.findByEmployeeCodeIgnoreCase(employee.getEmployeeCode().trim()).orElse(null);
-            }
-            if (letter == null && employee != null && employee.getFullName() != null && !employee.getFullName().isBlank()) {
-                letter = letterRepository.findFirstByFullNameIgnoreCase(employee.getFullName().trim()).orElse(null);
-            }
-        }
+        Employee employee = employeeRepository.findByEmailIgnoreCase(cleanEmail)
+                .orElseGet(() -> employeeRepository.findByEmail(cleanEmail).orElse(null));
+
+        GratitudeLetter letter = findMatchingLetter(cleanEmail, employee);
 
         if (letter != null && !Boolean.TRUE.equals(letter.getIsOpened())) {
             letter.setIsOpened(true);
@@ -211,6 +185,74 @@ public class GratitudeLetterService {
             letterRepository.save(letter);
             log.info("Đã đánh dấu đã mở thư tri ân cho nhân sự: {} ({})", letter.getFullName(), letter.getEmail());
         }
+    }
+
+    /**
+     * Cơ chế mapping đa tầng kết nối chính xác thư tri ân theo tài khoản đăng ký / đăng nhập:
+     * 1. Email chính xác (case-insensitive).
+     * 2. Tiền tố email ghép đuôi @ctin.vn (ví dụ lanmh@gmail.com -> lanmh@ctin.vn).
+     * 3. Chuỗi email người dùng nhập là Mã NV (ví dụ C30004).
+     * 4. Email lưu trong hồ sơ Employee.
+     * 5. Mã nhân viên (employeeCode) lưu trong hồ sơ Employee.
+     * 6. Họ và tên (fullName) của Employee.
+     */
+    private GratitudeLetter findMatchingLetter(String cleanEmail, Employee employee) {
+        if ((cleanEmail == null || cleanEmail.isBlank()) && employee == null) {
+            return null;
+        }
+
+        GratitudeLetter letter = null;
+
+        // Tầng 1: Khớp chính xác theo Email đăng nhập
+        if (cleanEmail != null && !cleanEmail.isBlank()) {
+            letter = letterRepository.findByEmailIgnoreCase(cleanEmail).orElse(null);
+            if (letter != null) return letter;
+
+            // Tầng 2: Nếu email có @, lấy prefix ghép với @ctin.vn (vd: lanmh@gmail.com -> lanmh@ctin.vn)
+            if (cleanEmail.contains("@")) {
+                String prefix = cleanEmail.substring(0, cleanEmail.indexOf("@")).trim();
+                if (!prefix.isBlank()) {
+                    letter = letterRepository.findByEmailIgnoreCase(prefix + "@ctin.vn").orElse(null);
+                    if (letter != null) return letter;
+                }
+            } else {
+                // Tầng 2b: Người dùng chỉ nhập username prefix không có @ (vd: lanmh)
+                letter = letterRepository.findByEmailIgnoreCase(cleanEmail + "@ctin.vn").orElse(null);
+                if (letter != null) return letter;
+            }
+
+            // Tầng 3: Kiểm tra xem chuỗi đăng nhập có phải là Mã nhân viên không (vd: C30004)
+            letter = letterRepository.findByEmployeeCodeIgnoreCase(cleanEmail).orElse(null);
+            if (letter != null) return letter;
+        }
+
+        // Tầng 4: Kiểm tra email trong hồ sơ Employee (nếu khác email đăng nhập)
+        if (employee != null && employee.getEmail() != null) {
+            String empEmail = employee.getEmail().trim();
+            if (!empEmail.equalsIgnoreCase(cleanEmail)) {
+                letter = letterRepository.findByEmailIgnoreCase(empEmail).orElse(null);
+                if (letter != null) return letter;
+                if (empEmail.contains("@")) {
+                    String prefix = empEmail.substring(0, empEmail.indexOf("@")).trim();
+                    letter = letterRepository.findByEmailIgnoreCase(prefix + "@ctin.vn").orElse(null);
+                    if (letter != null) return letter;
+                }
+            }
+        }
+
+        // Tầng 5: Khớp theo Mã NV (employeeCode) của nhân sự
+        if (employee != null && employee.getEmployeeCode() != null && !employee.getEmployeeCode().isBlank()) {
+            letter = letterRepository.findByEmployeeCodeIgnoreCase(employee.getEmployeeCode().trim()).orElse(null);
+            if (letter != null) return letter;
+        }
+
+        // Tầng 6: Khớp theo Họ và tên của nhân sự
+        if (employee != null && employee.getFullName() != null && !employee.getFullName().isBlank()) {
+            letter = letterRepository.findFirstByFullNameIgnoreCase(employee.getFullName().trim()).orElse(null);
+            if (letter != null) return letter;
+        }
+
+        return null;
     }
 
     private GratitudeLetterResponse toResponse(GratitudeLetter letter) {
