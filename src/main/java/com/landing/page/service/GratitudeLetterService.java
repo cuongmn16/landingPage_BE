@@ -62,11 +62,12 @@ public class GratitudeLetterService {
         if ("MANUAL_LOCKED".equalsIgnoreCase(mode)) {
             return false;
         }
-        // Chế độ AUTO_20H: Tự động phát hành khi giờ >= 20:00 (Múi giờ Asia/Ho_Chi_Minh)
+        // Chế độ AUTO_20H: Tự động phát hành từ 20:00 ngày 20/11/2026 trở đi (Múi giờ Asia/Ho_Chi_Minh)
         try {
             java.time.ZoneId vnZone = java.time.ZoneId.of("Asia/Ho_Chi_Minh");
-            java.time.LocalTime now = java.time.LocalTime.now(vnZone);
-            return !now.isBefore(java.time.LocalTime.of(20, 0));
+            java.time.LocalDateTime now = java.time.LocalDateTime.now(vnZone);
+            java.time.LocalDateTime releaseTarget = java.time.LocalDateTime.of(2026, 11, 20, 20, 0, 0);
+            return !now.isBefore(releaseTarget);
         } catch (Exception e) {
             return false;
         }
