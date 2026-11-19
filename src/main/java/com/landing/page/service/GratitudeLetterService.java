@@ -24,35 +24,63 @@ import java.util.List;
 public class GratitudeLetterService {
 
     public static final String KEY_GRATITUDE_LETTERS_PUBLISHED = "GRATITUDE_LETTERS_PUBLISHED";
+    public static final String KEY_GRATITUDE_LETTERS_MODE = "GRATITUDE_LETTERS_MODE"; // AUTO_20H | MANUAL_PUBLISHED | MANUAL_LOCKED
 
     private final GratitudeLetterRepository letterRepository;
     private final EmployeeRepository employeeRepository;
     private final SystemRuleConfigRepository ruleConfigRepository;
 
     @Transactional(readOnly = true)
+    public String getPublishMode() {
+        return ruleConfigRepository.findByConfigKey(KEY_GRATITUDE_LETTERS_MODE)
+                .map(SystemRuleConfig::getConfigValue)
+                .orElse("AUTO_20H"); // Mặc định: Tự động lúc 20:00
+    }
+
+    @Transactional
+    public String setPublishMode(String mode) {
+        String cleanMode = (mode != null && !mode.isBlank()) ? mode.trim().toUpperCase() : "AUTO_20H";
+        SystemRuleConfig config = ruleConfigRepository.findByConfigKey(KEY_GRATITUDE_LETTERS_MODE)
+                .orElseGet(() -> SystemRuleConfig.builder()
+                        .configKey(KEY_GRATITUDE_LETTERS_MODE)
+                        .ruleType(RuleType.MIN_COMPLETED_MISSIONS)
+                        .description("Che do phat hanh Thu Tri An (AUTO_20H | MANUAL_PUBLISHED | MANUAL_LOCKED)")
+                        .build());
+
+        config.setConfigValue(cleanMode);
+        ruleConfigRepository.save(config);
+        log.info("Admin updated Gratitude Letters publish mode to: {}", cleanMode);
+        return cleanMode;
+    }
+
+    @Transactional(readOnly = true)
     public boolean isPublished() {
-        return ruleConfigRepository.findByConfigKey(KEY_GRATITUDE_LETTERS_PUBLISHED)
-                .map(c -> Boolean.parseBoolean(c.getConfigValue()))
-                .orElse(false);
+        String mode = getPublishMode();
+        if ("MANUAL_PUBLISHED".equalsIgnoreCase(mode)) {
+            return true;
+        }
+        if ("MANUAL_LOCKED".equalsIgnoreCase(mode)) {
+            return false;
+        }
+        // Chế độ AUTO_20H: Tự động phát hành khi giờ >= 20:00 (Múi giờ Asia/Ho_Chi_Minh)
+        try {
+            java.time.ZoneId vnZone = java.time.ZoneId.of("Asia/Ho_Chi_Minh");
+            java.time.LocalTime now = java.time.LocalTime.now(vnZone);
+            return !now.isBefore(java.time.LocalTime.of(20, 0));
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     @Transactional
     public boolean setPublished(boolean published) {
-        SystemRuleConfig config = ruleConfigRepository.findByConfigKey(KEY_GRATITUDE_LETTERS_PUBLISHED)
-                .orElseGet(() -> SystemRuleConfig.builder()
-                        .configKey(KEY_GRATITUDE_LETTERS_PUBLISHED)
-                        .ruleType(RuleType.MIN_COMPLETED_MISSIONS)
-                        .description("Trang thai phat hanh Thu Tri An CTIN 25 Nam (true/false)")
-                        .build());
-
-        config.setConfigValue(String.valueOf(published));
-        ruleConfigRepository.save(config);
-        log.info("Admin updated Gratitude Letters published status to: {}", published);
-        return published;
+        setPublishMode(published ? "MANUAL_PUBLISHED" : "MANUAL_LOCKED");
+        return isPublished();
     }
 
     @Transactional(readOnly = true)
     public GratitudeLetterAdminSummaryResponse getAdminSummary() {
+        String mode = getPublishMode();
         boolean published = isPublished();
         List<GratitudeLetter> list = letterRepository.findAllByOrderByIdAsc();
         long openedCount = list.stream().filter(l -> Boolean.TRUE.equals(l.getIsOpened())).count();
@@ -63,6 +91,7 @@ public class GratitudeLetterService {
 
         return GratitudeLetterAdminSummaryResponse.builder()
                 .isPublished(published)
+                .publishMode(mode)
                 .total((long) list.size())
                 .openedCount(openedCount)
                 .letters(responses)
@@ -102,9 +131,12 @@ public class GratitudeLetterService {
         if (letter != null) {
             resp = toResponse(letter);
         } else {
-            // Fallback an toàn tuyệt đối cho tài khoản test / admin chưa có trong danh sách
-            String fullName = (employee != null && employee.getFullName() != null) ? employee.getFullName() : "Cán bộ nhân viên CTIN";
-            String unitName = "CTIN";
+            // Fallback an toàn cho tài khoản test / admin chưa có trong danh sách
+            boolean isBtcAdmin = isAdmin || (email != null && email.toLowerCase().contains("admin"));
+            String fullName = (employee != null && employee.getFullName() != null)
+                    ? employee.getFullName()
+                    : (isBtcAdmin ? "Quản Trị Viên BTC" : "Trần Tuấn Anh");
+            String unitName = isBtcAdmin ? "Ban Tổ Chức (BTC)" : "CTIN";
             if (employee != null) {
                 try {
                     if (employee.getUnit() != null) {
@@ -116,12 +148,14 @@ public class GratitudeLetterService {
 
             resp = GratitudeLetterResponse.builder()
                     .email(email)
-                    .employeeCode(employee != null ? employee.getEmployeeCode() : "CTIN_A25")
+                    .employeeCode(employee != null ? employee.getEmployeeCode() : (isBtcAdmin ? "ADMIN001" : "C30050"))
                     .fullName(fullName)
-                    .salutation("Anh/Chị")
+                    .salutation(isBtcAdmin ? "Ông" : "Anh")
                     .unitName(unitName)
-                    .daysOfService(3485)
-                    .yearsDesc("Hơn 9 năm 6 tháng đầy nhiệt huyết & gắn bó cùng đại gia đình CTIN")
+                    .daysOfService(isBtcAdmin ? 9130 : 4859)
+                    .yearsDesc(isBtcAdmin
+                            ? "Hơn 25 năm đầy nhiệt huyết & gắn bó cùng đại gia đình CTIN"
+                            : "Hơn 13 năm 3 tháng đầy nhiệt huyết & gắn bó cùng đại gia đình CTIN")
                     .isOpened(false)
                     .build();
         }

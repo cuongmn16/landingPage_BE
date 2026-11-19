@@ -13,6 +13,7 @@ import java.util.List;
 @AllArgsConstructor
 public class GratitudeLetterAdminSummaryResponse {
     private Boolean isPublished;
+    private String publishMode;
     private Long total;
     private Long openedCount;
     private List<GratitudeLetterResponse> letters;

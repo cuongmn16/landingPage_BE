@@ -46,4 +46,15 @@ public class GratitudeLetterController {
         boolean result = gratitudeLetterService.setPublished(published);
         return ResponseEntity.ok(ApiResponse.ok(published ? "Đã phát hành Thư Tri Ân tới toàn bộ nhân sự!" : "Đã tạm khóa phát hành Thư Tri Ân.", result));
     }
+
+    @PostMapping("/admin/publish-mode")
+    public ResponseEntity<ApiResponse<String>> setPublishMode(@RequestParam("mode") String mode) {
+        String result = gratitudeLetterService.setPublishMode(mode);
+        String msg = "AUTO_20H".equalsIgnoreCase(result)
+                ? "Đã kích hoạt chế độ tự động phát hành lúc 20:00!"
+                : ("MANUAL_PUBLISHED".equalsIgnoreCase(result)
+                    ? "Đã phát hành Thư Tri Ân chủ động ngay lập tức!"
+                    : "Đã tạm khóa niêm phong Thư Tri Ân.");
+        return ResponseEntity.ok(ApiResponse.ok(msg, result));
+    }
 }
