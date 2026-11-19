@@ -125,7 +125,11 @@ public class GratitudeLetterService {
         Employee employee = employeeRepository.findByEmailIgnoreCase(cleanEmail)
                 .orElseGet(() -> employeeRepository.findByEmail(cleanEmail).orElse(null));
 
-        boolean isAdmin = employee != null && employee.getRole() != null && "ADMIN".equalsIgnoreCase(employee.getRole().name());
+        boolean isAdmin = SecurityUtils.isAdmin() ||
+                (employee != null && employee.getRole() != null &&
+                        (employee.getRole() == com.landing.page.entity.enums.Role.ROLE_ADMIN ||
+                                "ROLE_ADMIN".equalsIgnoreCase(employee.getRole().name()) ||
+                                "ADMIN".equalsIgnoreCase(employee.getRole().name())));
         boolean published = isPublished();
 
         GratitudeLetter letter = findMatchingLetter(cleanEmail, employee);
